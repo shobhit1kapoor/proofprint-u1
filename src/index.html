@@ -1,0 +1,1786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProofPrint U1 - Snapmaker Print Readiness</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #111214; --surface: #1c1e22; --surface2: #252830;
+  --border: #33363d; --text: #e0e2e8; --text-dim: #8b8f9a;
+  --accent: #00c8ff; --accent-dim: rgba(0,200,255,0.12);
+  --green: #4ade80; --yellow: #facc15; --red: #f87171; --orange: #fb923c; --purple: #a78bfa; --teal: #2dd4bf;
+  --radius: 8px; --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #f5f5f7; --surface: #ffffff; --surface2: #f0f0f2;
+  --border: #d4d4d8; --text: #1c1e22; --text-dim: #6b7280;
+  --accent: #0088cc; --accent-dim: rgba(0,136,204,0.1);
+  --green: #16a34a; --yellow: #ca8a04; --red: #dc2626; --orange: #ea580c; --purple: #7c3aed; --teal: #0d9488;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #a0a0a8; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+input, select, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ===== LAYOUT ===== */
+#app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* HEADER */
+header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 56px; }
+.logo { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.logo span { color: var(--accent); }
+#dropZone { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border: 1.5px dashed var(--border); border-radius: var(--radius); color: var(--text-dim); font-size: 13px; transition: all .2s; cursor: pointer; min-height: 36px; }
+#dropZone:hover, #dropZone.dragover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+#dropZone svg { flex-shrink: 0; }
+#fileInput { display: none; }
+#fileInfo { display: none; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+#fileInfo .fname { color: var(--text); font-weight: 600; }
+#firmwareSelect { padding: 6px 28px 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-weight: 600; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b8f9a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; }
+#firmwareSelect:focus { border-color: var(--accent); outline: none; }
+#exportBtn { display: none; padding: 8px 18px; background: var(--accent); color: #000; border: none; border-radius: var(--radius); font-weight: 600; font-size: 13px; transition: opacity .2s; }
+#exportBtn:hover { opacity: .85; }
+
+/* MAIN */
+main { display: flex; flex: 1; overflow: hidden; }
+
+/* LEFT PANEL — LAYERS */
+.panel-left { width: 260px; min-width: 200px; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); }
+.panel-header { padding: 12px 14px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+#layerSearch { margin: 0 10px 8px; padding: 7px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; outline: none; }
+#layerSearch:focus { border-color: var(--accent); }
+#layerList { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+.layer-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background .15s; }
+.layer-item:hover { background: var(--surface2); }
+.layer-item.active { background: var(--accent-dim); color: var(--accent); }
+.layer-num { font-weight: 600; min-width: 24px; }
+.layer-z { color: var(--text-dim); font-size: 12px; }
+.layer-lines { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+.layer-mod-badge { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+.layer-item.range-selected {
+  background: rgba(100,181,246,0.12) !important;
+  border-left: 3px solid #64b5f6;
+}
+.range-action-bar {
+  padding: 8px 10px;
+  background: rgba(100,181,246,0.08);
+  border: 1px solid rgba(100,181,246,0.2);
+  border-radius: 6px;
+  margin: 6px 4px;
+}
+.range-label {
+  font-size: 11px;
+  color: #64b5f6;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.range-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.range-actions button {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(100,181,246,0.3);
+  background: rgba(100,181,246,0.1);
+  color: #90caf9;
+  cursor: pointer;
+}
+.range-actions button:hover {
+  background: rgba(100,181,246,0.2);
+}
+[data-theme="light"] .layer-item.range-selected {
+  background: rgba(25,118,210,0.08) !important;
+  border-left-color: #1976d2;
+}
+[data-theme="light"] .range-action-bar {
+  background: rgba(25,118,210,0.06);
+  border-color: rgba(25,118,210,0.15);
+}
+[data-theme="light"] .range-label { color: #1976d2; }
+[data-theme="light"] .range-actions button {
+  border-color: rgba(25,118,210,0.25);
+  background: rgba(25,118,210,0.06);
+  color: #1565c0;
+}
+
+/* CENTER PANEL — PREVIEW */
+.panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.preview-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); }
+.preview-toolbar .jump-input { width: 70px; padding: 4px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); text-align: center; }
+#gcodePreview { flex: 1; overflow: auto; padding: 0; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+.code-table { width: 100%; border-collapse: collapse; }
+.code-table td { padding: 0 12px; white-space: pre; vertical-align: top; }
+.code-table .ln { color: var(--text-dim); text-align: right; user-select: none; width: 50px; min-width: 50px; opacity: .5; padding-right: 8px; border-right: 1px solid var(--border); }
+.code-table tr.layer-start td { border-top: 1px solid var(--border); }
+.code-table tr.highlight td { background: rgba(250,204,21,.08); }
+.code-table tr.mod-line td { background: rgba(251,146,60,.12); }
+.code-table tr.mod-line td:last-child { color: var(--orange); font-weight: 600; }
+.code-table tr.mod-line-midlayer td { background: rgba(45,212,191,.12); }
+.code-table tr.mod-line-midlayer td:last-child { color: var(--teal); font-weight: 600; }
+
+/* SECTION-BASED PREVIEW */
+.gcode-section { border-bottom: 1px solid var(--border); }
+.gcode-section:last-child { border-bottom: none; }
+.gcode-section-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; cursor: pointer; user-select: none;
+  background: var(--surface2); font-size: 12px; font-weight: 600;
+  color: var(--text-dim); position: sticky; top: 0; z-index: 1;
+  border-bottom: 1px solid var(--border); transition: background .15s;
+}
+.gcode-section-header:hover { background: var(--border); color: var(--text); }
+.gcode-section-header .section-chevron {
+  font-size: 9px; transition: transform .2s; display: inline-block; width: 12px; text-align: center;
+}
+.gcode-section.collapsed .section-chevron { transform: rotate(-90deg); }
+.gcode-section.expanded .section-chevron { transform: rotate(0deg); }
+.gcode-section-header .section-label { flex: 1; }
+.gcode-section-header .section-meta { font-weight: 400; color: var(--text-dim); font-size: 11px; }
+.gcode-section-header.active { background: var(--accent-dim); color: var(--accent); }
+.gcode-section-header.active .section-meta { color: var(--accent); }
+.gcode-section-preview { padding: 0; font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--text-dim); }
+.gcode-section-preview .code-table tr td:last-child { opacity: 0.6; }
+.gcode-section-lines { padding: 0; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+.gcode-section-loading { padding: 8px 12px; font-size: 11px; color: var(--text-dim); font-style: italic; }
+
+/* SEARCH */
+.search-bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.search-bar.hidden { display: none; }
+.search-bar input {
+  flex: 1; min-width: 0;
+  padding: 4px 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 13px;
+  outline: none;
+}
+.search-bar input:focus { border-color: var(--accent); }
+.search-bar .search-count { color: var(--text-dim); font-size: 11px; white-space: nowrap; min-width: 80px; text-align: center; }
+.search-bar button {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-dim); cursor: pointer; padding: 2px 8px; font-size: 14px; line-height: 1;
+}
+.search-bar button:hover { background: var(--border); color: var(--text); }
+.code-table tr.search-active td { background: var(--accent-dim); }
+.code-table tr.search-active td:last-child mark { background: var(--accent); color: #000; border-radius: 2px; padding: 0 1px; }
+.code-table tr[onclick]:hover td { cursor: pointer; }
+.code-table tr.line-selected td { background: var(--accent-dim); cursor: pointer; }
+.code-table td mark.search-match { background: rgba(250,204,21,.35); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+/* G-code decode tooltip */
+#gcodeTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.15s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; max-width: 380px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+#gcodeTooltip.visible { opacity: 1; }
+#gcodeTooltip .tt-header { font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#gcodeTooltip .tt-cmd-g { color: #60a5fa; }
+#gcodeTooltip .tt-cmd-m { color: #4ade80; }
+#gcodeTooltip .tt-params { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+#gcodeTooltip .tt-letter { color: #c4b5fd; font-weight: 600; }
+#gcodeTooltip .tt-value { color: #fbbf24; }
+#gcodeTooltip .tt-desc { color: var(--text-dim); }
+#gcodeTooltip .tt-unknown { color: var(--text-dim); font-style: italic; }
+
+.syn-g { color: #60a5fa; }
+.syn-m { color: #4ade80; }
+.syn-comment { color: #6b7280; }
+.syn-param { color: #c4b5fd; }
+.syn-value { color: #fbbf24; }
+
+/* VIEWER BOTTOM-LEFT STACK */
+.viewer-bottom-left {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* STATS OVERLAY */
+.stats-overlay {
+  background: rgba(0,0,0,0.75);
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  line-height: 1.6;
+  max-width: 280px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .stats-overlay {
+  background: rgba(255,255,255,0.85);
+  color: #333;
+}
+.stats-overlay .stat-label { color: #888; margin-right: 6px; }
+[data-theme="light"] .stats-overlay .stat-label { color: #666; }
+.stats-overlay .stat-value { color: #fff; font-weight: bold; }
+[data-theme="light"] .stats-overlay .stat-value { color: #111; }
+.stats-overlay .hover-divider {
+  border-top: 1px solid rgba(255,255,255,0.2);
+  margin: 4px 0;
+}
+[data-theme="light"] .stats-overlay .hover-divider {
+  border-top: 1px solid rgba(0,0,0,0.15);
+}
+.stats-overlay .stat-link {
+  pointer-events: auto;
+  cursor: pointer;
+  text-decoration: underline;
+  color: #64b5f6;
+}
+
+/* COMPARE CONTROLS */
+.compare-controls {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  background: rgba(0,0,0,0.8);
+  color: #e0e0e0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 12;
+  font-size: 12px;
+  backdrop-filter: blur(4px);
+}
+[data-theme="light"] .compare-controls {
+  background: rgba(255,255,255,0.9);
+  color: #333;
+}
+.compare-controls input, .compare-controls button {
+  margin: 0 4px;
+  font-size: 11px;
+}
+.compare-diff-stats {
+  margin-top: 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: #aaa;
+}
+
+/* VIEWER */
+.viewer-wrap { position: relative; flex: 1; display: none; overflow: hidden; }
+.viewer-wrap.active { display: flex; flex-direction: column; }
+#gcodePreview.hidden { display: none; }
+.viewer-canvas-area { position: relative; flex: 1; overflow: hidden; }
+#viewerCanvas { width: 100%; height: 100%; background: var(--bg); cursor: grab; }
+#viewerCanvas:active { cursor: grabbing; }
+.layer-slider-wrap { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface); }
+.layer-slider-wrap label { font-size: 12px; color: var(--text-dim); white-space: nowrap; min-width: 80px; }
+#layerSlider { flex: 1; accent-color: var(--accent); height: 6px; }
+.slider-ticks { position: relative; height: 8px; margin: 0 16px; }
+.slider-tick { position: absolute; width: 4px; height: 4px; border-radius: 50%; top: 2px; transform: translateX(-50%); }
+.sim-controls { display: none; align-items: center; gap: 10px; padding: 4px 16px 8px; background: var(--surface); font-size: 12px; color: var(--text-dim); }
+.sim-controls.active { display: flex; }
+.sim-controls button { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; color: var(--text); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.sim-controls button:hover { background: var(--surface2); }
+.sim-controls button.playing { color: var(--accent); border-color: var(--accent); }
+.sim-progress { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; cursor: pointer; position: relative; }
+.sim-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.05s linear; }
+.sim-controls input[type="range"] { width: 80px; accent-color: var(--accent); }
+.sim-controls .sim-label { white-space: nowrap; min-width: 70px; text-align: right; }
+.sim-pause-tick { position: absolute; top: -2px; width: 2px; height: 8px; background: var(--yellow, #facc15); border-radius: 1px; transform: translateX(-50%); pointer-events: none; }
+.sim-pause-flash { display: none; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.4); border-radius: 4px; color: var(--yellow, #facc15); font-size: 11px; font-weight: 600; white-space: nowrap; animation: sim-flash-pulse 0.6s ease-in-out; }
+.sim-pause-flash.visible { display: flex; }
+@keyframes sim-flash-pulse { 0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.cross-section-controls { display: none; flex-direction: column; gap: 6px; position: absolute; top: 8px; right: 8px; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text-dim); z-index: 20; min-width: 200px; max-width: 240px; pointer-events: auto; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+.cross-section-controls.active { display: flex; }
+.cross-section-controls label { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.cross-section-controls input[type="range"] { flex: 1; min-width: 100px; }
+.cross-section-controls .cs-buttons { display: flex; gap: 4px; justify-content: flex-end; }
+.cross-section-controls button { padding: 2px 10px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text); cursor: pointer; }
+.cross-section-controls button:hover { background: var(--accent); color: #fff; }
+#crossSectionToggle.active { background: var(--accent); color: #fff; }
+.view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 6px; padding: 2px; }
+.view-toggle button { padding: 4px 12px; border: none; background: none; color: var(--text-dim); border-radius: 4px; font-size: 12px; font-weight: 600; transition: all .15s; }
+.view-toggle button.active { background: var(--accent-dim); color: var(--accent); }
+.view-toggle button:hover:not(.active) { color: var(--text); }
+.viewer-overlay { position: absolute; top: 12px; left: 12px; right: 12px; pointer-events: none; }
+.viewer-info { display: inline-block; padding: 6px 12px; background: rgba(0,0,0,.8); border-radius: 6px; font-size: 14px; color: #fff; font-family: var(--mono); letter-spacing: .02em; }
+.viewer-mod-banner { margin-top: 8px; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; pointer-events: none; }
+.viewer-mod-banner.pause { background: rgba(250,204,21,.2); color: var(--yellow); border: 1px solid rgba(250,204,21,.3); }
+.viewer-mod-banner.filament { background: rgba(167,139,250,.2); color: var(--purple); border: 1px solid rgba(167,139,250,.3); }
+.viewer-mod-banner.custom { background: rgba(0,200,255,.15); color: var(--accent); border: 1px solid rgba(0,200,255,.25); }
+.viewer-mod-banner.recovery { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.3); color: var(--red, #ef4444); }
+.viewer-mod-banner.mid-layer-pause { background: rgba(45,212,191,.2); color: var(--teal); border: 1px solid rgba(45,212,191,.3); }
+.edit-mode-banner { display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(251,146,60,.2); color: var(--orange); border: 1px solid rgba(251,146,60,.3); pointer-events: none; z-index: 10; white-space: nowrap; }
+.edit-mode-banner.visible { display: block; }
+.viewer-legend {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 180px; max-width: 240px; pointer-events: auto; font-size: 12px;
+  max-height: calc(100vh - 200px); display: flex; flex-direction: column;
+  color: var(--text);
+}
+.warp-controls { display: none; }
+.legend-header {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+}
+.legend-header .legend-title { flex: 1; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+.legend-header button { background: none; border: none; color: var(--text-dim); font-size: 11px; padding: 2px 4px; cursor: pointer; border-radius: 3px; }
+.legend-header button:hover { color: var(--text); background: var(--surface2); }
+.legend-body { overflow-y: auto; padding: 4px 0; }
+.legend-body.collapsed { display: none; }
+.legend-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; color: var(--text);
+}
+.legend-row label { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.legend-row input[type="color"] { width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 3px; padding: 0; cursor: pointer; background: none; flex-shrink: 0; }
+.legend-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
+.legend-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+.legend-show-all {
+  padding: 4px 10px; font-size: 11px; color: var(--accent); cursor: pointer; text-align: center;
+  border-top: 1px solid var(--border); user-select: none;
+}
+.legend-show-all:hover { text-decoration: underline; }
+.legend-mode-select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 11px; padding: 1px 4px; cursor: pointer; max-width: 140px; }
+.heatmap-gradient { padding: 8px 10px 2px; }
+.heatmap-bar { height: 12px; border-radius: 3px; background: linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); border: 1px solid var(--border); }
+.heatmap-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.heatmap-stats { padding: 6px 10px; font-size: 11px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.heatmap-stats strong { color: var(--accent); }
+#heatmapTooltip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.1s; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
+#heatmapTooltip.visible { opacity: 1; }
+
+/* EDIT INFO PANEL */
+#editInfoPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 340px; pointer-events: auto; }
+#editInfoPanel.visible { display: block; }
+#editInfoPanel .edit-line { color: var(--text); margin-bottom: 6px; word-break: break-all; }
+#editInfoPanel .edit-meta { color: var(--text-dim); font-size: 11px; margin-bottom: 8px; }
+#editInfoPanel .edit-actions { display: flex; gap: 8px; }
+#editInfoPanel .edit-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#editInfoPanel .edit-delete { background: #dc2626; color: white; border-color: #dc2626; }
+#editInfoPanel .edit-delete:hover { background: #b91c1c; }
+#editInfoPanel .edit-cancel { background: var(--surface2); color: var(--text); }
+#editInfoPanel .edit-params { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#editInfoPanel .edit-param { display: flex; align-items: center; gap: 3px; }
+#editInfoPanel .edit-param label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#editInfoPanel .edit-param input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#editInfoPanel .edit-param input:focus { border-color: var(--accent); outline: none; }
+#editInfoPanel .edit-param input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#editInfoPanel .edit-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#editInfoPanel .edit-apply:hover { filter: brightness(1.1); }
+#editInfoPanel .edit-error { color: var(--red, #ef4444); font-size: 11px; margin-bottom: 6px; display: none; }
+
+/* TRANSFORM PANEL */
+#transformPanel { position: absolute; top: 44px; right: 10px; z-index: 100; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: none; max-width: 300px; pointer-events: auto; }
+#transformPanel.visible { display: block; }
+#transformPanel .transform-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+#transformPanel .transform-header span { font-weight: 600; color: var(--text); }
+#transformPanel .transform-header a { color: var(--accent); cursor: pointer; font-size: 11px; text-decoration: none; }
+#transformPanel .transform-header a:hover { text-decoration: underline; }
+#transformPanel .transform-section { margin-bottom: 8px; }
+#transformPanel .transform-section label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 4px; }
+#transformPanel .transform-row { display: flex; align-items: center; gap: 6px; }
+#transformPanel .transform-row .field-label { font-weight: 600; color: var(--text-dim); font-size: 11px; min-width: 10px; }
+#transformPanel .transform-row input { width: 72px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 12px; }
+#transformPanel .transform-row input:focus { border-color: var(--accent); outline: none; }
+#transformPanel .transform-row input.changed { border-color: var(--orange); background: rgba(251,146,60,.08); }
+#transformPanel .mirror-btns { display: flex; gap: 6px; }
+#transformPanel .mirror-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 11px; cursor: pointer; }
+#transformPanel .mirror-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+#transformPanel .transform-actions { display: flex; gap: 8px; margin-top: 8px; }
+#transformPanel .transform-actions button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+#transformPanel .transform-apply { background: var(--accent); color: white; border-color: var(--accent); }
+#transformPanel .transform-apply:hover { filter: brightness(1.1); }
+#transformPanel .transform-cancel { background: var(--surface2); color: var(--text); }
+
+/* EMPTY STATES */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); text-align: center; padding: 40px; gap: 12px; }
+.empty-state svg { opacity: .3; }
+.empty-state p { max-width: 260px; line-height: 1.5; }
+
+/* PROGRESS BAR */
+.parse-progress { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; }
+.parse-progress .bar-wrap { width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.parse-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.parse-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.analysis-progress { padding: 24px 16px; text-align: center; }
+.analysis-progress .bar-wrap { width: 100%; max-width: 300px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin: 8px auto 0; }
+.analysis-progress .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.analysis-progress .bar-label { font-size: 12px; color: var(--text-dim); }
+.viewer-analysis-loading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 20; pointer-events: none; }
+.viewer-analysis-loading .bar-wrap { width: 220px; height: 6px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; margin: 6px auto 0; }
+.viewer-analysis-loading .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.1s; }
+.viewer-analysis-loading .bar-label { font-size: 13px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+
+/* RIGHT PANEL — TOOLS */
+.panel-right { width: 400px; min-width: 280px; max-width: 60vw; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); position: relative; }
+.panel-right-resize { position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 10; }
+.panel-right-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 2px; height: 32px; transform: translateY(-50%); border-radius: 1px; background: var(--border); transition: background .2s; }
+.panel-right-resize:hover::after, .panel-right-resize.dragging::after { background: var(--accent); }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { padding: 10px 8px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; transition: all .2s; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; padding: 14px; overflow-y: auto; flex: 1; }
+.tab-content.active { display: block; }
+
+/* FORMS */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+.form-row { display: flex; gap: 10px; }
+.form-row .form-group { flex: 1; }
+.input, .select { width: 100%; padding: 8px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; }
+.input:focus, .select:focus { border-color: var(--accent); }
+.select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b8f9a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; border: none; transition: all .2s; width: 100%; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: .85; }
+.btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { background: rgba(248,113,113,.12); color: var(--red); }
+.btn-danger:hover { background: rgba(248,113,113,.2); }
+.hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+
+/* MODIFICATIONS LIST */
+.mods-section { border-top: 1px solid var(--border); margin-top: auto; flex-shrink: 0; }
+.mods-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.mods-count { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+#modsList { max-height: 220px; overflow-y: auto; padding: 0 8px 8px; }
+.mod-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: grab; }
+.mod-item:active { cursor: grabbing; }
+.mod-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.mod-badge.pause { background: rgba(250,204,21,.15); color: var(--yellow); }
+.mod-badge.filament { background: rgba(167,139,250,.15); color: var(--purple); }
+.mod-badge.eject { background: rgba(74,222,128,.15); color: var(--green); }
+.mod-badge.custom { background: rgba(0,200,255,.12); color: var(--accent); }
+.mod-badge.zoffset { background: rgba(251,146,60,.15); color: var(--orange); }
+.mod-badge.recovery { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-delete { background: rgba(239,68,68,.15); color: var(--red, #ef4444); }
+.mod-badge.line-edit { background: rgba(96,165,250,.15); color: var(--accent, #60a5fa); }
+.mod-desc { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mod-actions { display: flex; gap: 2px; }
+.mod-action { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: none; background: none; color: var(--text-dim); border-radius: 4px; }
+.mod-action:hover { background: var(--border); color: var(--text); }
+.mod-action.delete:hover { color: var(--red); }
+.no-mods { text-align: center; padding: 16px; color: var(--text-dim); font-size: 12px; }
+
+/* RADIO GROUP */
+.radio-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.radio-opt { position: relative; }
+.radio-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.radio-opt label { display: block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; transition: all .15s; }
+.radio-opt input:checked + label { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+/* HOLE DETECTION */
+.hole-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all .15s; }
+.hole-item:hover { border-color: var(--border); }
+.hole-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+.hole-item .hole-id { font-weight: 700; color: var(--accent); min-width: 20px; }
+.hole-item .hole-info { flex: 1; }
+.hole-item .hole-info span { display: block; color: var(--text-dim); font-size: 11px; }
+.hole-list-wrap { max-height: 180px; overflow-y: auto; margin-bottom: 14px; }
+.insert-summary { padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; }
+.insert-summary .insert-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.insert-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: rgba(0,200,255,.12); color: var(--accent); }
+#viewerCanvas.hole-mode { cursor: crosshair !important; }
+#viewerCanvas.hole-mode:active { cursor: crosshair !important; }
+.hole-detect-btn { padding: 4px 10px; border: 1px solid var(--border); background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); transition: all .15s; }
+.hole-detect-btn:hover { border-color: var(--accent); color: var(--accent); }
+.hole-detect-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.color-picker-row { display: none; align-items: center; gap: 4px; margin-left: 4px; }
+.color-picker-row.visible { display: inline-flex; }
+.color-swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; background: none;
+}
+.color-swatch.active { border-color: var(--text); }
+.color-swatch:hover { border-color: var(--border); }
+.color-custom-input { width: 24px; height: 20px; border: none; padding: 0; cursor: pointer; background: none; }
+.detect-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.detect-controls .btn { width: auto; flex: 1; }
+.filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.filter-row input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; }
+.filter-row .filter-val { min-width: 32px; text-align: right; color: var(--accent); font-weight: 600; font-family: var(--mono); font-size: 11px; }
+.section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.section-label:first-child { border-top: none; padding-top: 0; }
+.no-holes { text-align: center; padding: 16px; color: var(--text-dim); font-size: 12px; }
+.computed-layer { padding: 8px 10px; background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: var(--green); font-weight: 600; }
+.warning-msg { padding: 8px 10px; background: rgba(250,204,21,.08); border: 1px solid rgba(250,204,21,.2); border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: var(--yellow); }
+
+/* SHORTCUTS OVERLAY */
+.shortcuts-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; justify-content: center; align-items: center; }
+.shortcuts-overlay.active { display: flex; }
+.shortcuts-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 32px; max-width: 420px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.shortcuts-card h3 { margin-bottom: 16px; font-size: 16px; }
+.shortcuts-card table { width: 100%; font-size: 13px; }
+.shortcuts-card td { padding: 4px 0; }
+.shortcuts-card kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 11px; }
+.shortcuts-card .close-btn { float: right; background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
+
+/* RESPONSIVE */
+@media (max-width: 1100px) {
+  .panel-left { width: 200px; min-width: 160px; }
+  .panel-right { width: 340px; min-width: 280px; }
+}
+
+@media (max-width: 800px) {
+  main { flex-direction: column; }
+  .panel-left {
+    width: 100%; max-height: 0; overflow: hidden; border: none;
+    border-bottom: 1px solid var(--border); transition: max-height .3s;
+  }
+  .panel-left.drawer-open { max-height: 200px; }
+  .panel-right {
+    width: 100% !important; max-height: 40vh; border: none;
+    border-top: 1px solid var(--border); overflow-y: auto;
+  }
+  .panel-right-resize { display: none; }
+  .panel-center { min-height: 300px; }
+  .drawer-toggle { display: inline-flex; }
+}
+
+.drawer-toggle {
+  display: none; align-items: center; justify-content: center;
+  width: 32px; height: 32px; background: none; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-dim); font-size: 16px; cursor: pointer;
+}
+.drawer-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* TOAST NOTIFICATIONS */
+.toast-container { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center; }
+.toast { pointer-events: auto; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; animation: toastSlide .35s ease; min-width: 260px; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,.35); border: none; }
+.toast.success { background: #16a34a; color: #fff; }
+.toast.warning { background: #eab308; color: #000; }
+.toast.error { background: #dc2626; color: #fff; }
+.toast .toast-close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; opacity: .7; font-size: 18px; }
+.toast .toast-close:hover { opacity: 1; }
+@keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ONBOARDING HINTS */
+.onboard-hint { position: absolute; background: var(--accent); color: #000; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; z-index: 50; white-space: nowrap; cursor: pointer; animation: hintPulse 2s ease-in-out infinite; top: calc(100% + 8px); left: 0; }
+.onboard-hint::after { content: ''; position: absolute; border: 6px solid transparent; }
+.onboard-hint.below::after { bottom: 100%; left: 20px; border-bottom-color: var(--accent); }
+@keyframes hintPulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+
+/* Reference view */
+#referenceView { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+#referenceView.hidden { display: none; }
+.ref-search-bar { padding: 12px 16px 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ref-search-bar .input { width: 100%; max-width: 400px; }
+.ref-firmware-badge { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.ref-firmware-badge span { background: var(--accent); color: #fff; padding: 1px 8px; border-radius: 8px; font-weight: 600; font-size: 10px; }
+.ref-main { display: flex; flex: 1; overflow: hidden; }
+.ref-sidebar { width: 180px; min-width: 140px; flex-shrink: 0; overflow-y: auto; padding: 12px 0; border-right: 1px solid var(--border); background: var(--surface); }
+.ref-sidebar-item { display: block; padding: 6px 16px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-left: 3px solid transparent; text-decoration: none; transition: all .15s; }
+.ref-sidebar-item:hover { color: var(--text-primary); background: var(--surface2); }
+.ref-sidebar-item.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.ref-cards-area { flex: 1; overflow-y: auto; padding: 12px 20px; }
+.ref-category { margin-bottom: 16px; }
+.ref-category-header { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 0; font-weight: 700; font-size: 14px; color: var(--text-primary); user-select: none; scroll-margin-top: 8px; }
+.ref-category-header::before { content: '\25BC'; font-size: 9px; transition: transform .2s; }
+.ref-category.collapsed .ref-category-header::before { transform: rotate(-90deg); }
+.ref-category.collapsed .ref-category-cards { display: none; }
+.ref-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: var(--bg-secondary); }
+.ref-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.ref-card-code { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--accent); }
+.ref-card-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ref-card-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+.ref-card-params { width: 100%; font-size: 12px; border-collapse: collapse; margin-bottom: 8px; }
+.ref-card-params th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 3px 10px 3px 0; border-bottom: 1px solid var(--border); }
+.ref-card-params td { padding: 3px 10px 3px 0; color: var(--text-primary); }
+.ref-card-params td:first-child { font-family: var(--mono); font-weight: 700; color: var(--accent); width: 40px; }
+.ref-card-example { font-family: var(--mono); font-size: 12px; background: var(--bg-primary); padding: 6px 10px; border-radius: 4px; color: var(--text-secondary); margin-bottom: 8px; overflow-x: auto; white-space: nowrap; }
+.ref-card-firmware { font-size: 12px; padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); color: var(--text-primary); }
+.ref-card-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.ref-card-insert { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; white-space: nowrap; }
+.ref-card-insert:hover { background: var(--accent); color: #fff; }
+.ref-card-insert.disabled { opacity: .4; pointer-events: none; }
+.ref-fw-badges { display: flex; gap: 4px; flex-shrink: 0; }
+.ref-fw-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; line-height: 1.4; white-space: nowrap; }
+.ref-fw-badge[data-fw="bambu"] { background: #2d7a3a22; color: #2d7a3a; border: 1px solid #2d7a3a44; }
+.ref-fw-badge[data-fw="klipper"] { background: #c4640022; color: #c46400; border: 1px solid #c4640044; }
+.ref-fw-badge[data-fw="marlin"] { background: #2563eb22; color: #2563eb; border: 1px solid #2563eb44; }
+.ref-fw-badge[data-fw="rrf"] { background: #7c3aed22; color: #7c3aed; border: 1px solid #7c3aed44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="bambu"] { background: #4ade8022; color: #4ade80; border-color: #4ade8044; }
+[data-theme="dark"] .ref-fw-badge[data-fw="klipper"] { background: #fb923c22; color: #fb923c; border-color: #fb923c44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="marlin"] { background: #60a5fa22; color: #60a5fa; border-color: #60a5fa44; }
+[data-theme="dark"] .ref-fw-badge[data-fw="rrf"] { background: #a78bfa22; color: #a78bfa; border-color: #a78bfa44; }
+.ref-no-results { text-align: center; color: var(--text-secondary); padding: 40px 0; font-size: 14px; }
+@media (max-width: 900px) {
+  .ref-sidebar { display: none; }
+  .ref-cards-area { padding: 12px; }
+}
+
+/* FAN / COOLING */
+.fan-rules-list { display: flex; flex-direction: column; gap: 4px; }
+.fan-rule { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; flex-wrap: wrap; }
+.fan-rule select, .fan-rule input { font-size: 11px; padding: 2px 4px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; }
+.fan-rule input[type="number"] { width: 48px; }
+.fan-rule input[type="range"] { width: 60px; flex-shrink: 0; }
+.fan-rule .fan-rule-speed { font-family: var(--mono); font-size: 11px; width: 32px; text-align: right; }
+.fan-rule .fan-rule-del { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; padding: 0 4px; }
+.fan-rule .fan-rule-del:hover { color: #ef4444; }
+.fan-ch-toggle { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+.fan-ch-toggle input { width: 12px; height: 12px; }
+.fan-summary { font-size: 11px; color: var(--text-secondary); padding: 4px 0; }
+
+/* PA TUNER */
+.pa-firmware-info { font-size: 12px; opacity: 0.7; padding: 4px 0; }
+.pa-feature-table { display: flex; flex-direction: column; gap: 2px; }
+.pa-feature-row {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+  background: var(--surface2); border-radius: 4px; font-size: 13px; color: var(--text);
+}
+.pa-feature-row .pa-type-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-feature-row .pa-speed-hint { font-size: 11px; opacity: 0.5; white-space: nowrap; }
+.pa-feature-row input[type="number"] { width: 72px; }
+.pa-calib-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 13px; }
+.pa-calib-grid label { opacity: 0.7; }
+.pa-calib-grid .input { width: 100%; }
+.pa-summary { font-size: 12px; opacity: 0.7; padding: 4px 0; }
+
+/* PRINTER PROFILE PANEL */
+#printerProfilePanel {
+  position: absolute; bottom: 12px; right: 12px; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-width: 200px; max-width: 280px; pointer-events: auto; font-size: 12px;
+  color: var(--text);
+}
+#printerProfilePanel .panel-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
+}
+#printerProfilePanel .panel-header:hover { background: var(--surface2); }
+#printerProfilePanel .toggle-icon { font-size: 10px; transition: transform 0.2s; }
+#printerProfilePanel.collapsed .toggle-icon { transform: rotate(-90deg); }
+#printerProfilePanel.collapsed .panel-content { display: none; }
+#printerProfilePanel .panel-content { padding: 10px 12px; }
+#printerProfilePanel .field-row { margin-bottom: 10px; }
+#printerProfilePanel .field-row label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+#printerProfilePanel .field-row input,
+#printerProfilePanel .field-row select {
+  width: 100%; padding: 6px 8px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); font-size: 12px;
+}
+#printerProfilePanel .field-row input:focus,
+#printerProfilePanel .field-row select:focus { border-color: var(--accent); outline: none; }
+#printerProfilePanel button {
+  width: 100%; padding: 6px 10px; margin-top: 6px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+}
+#printerProfilePanel button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* ===== Analysis Panel ===== */
+.analysis-config { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.analysis-config .field-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.analysis-config .field-row label { min-width: 60px; font-size: 11px; color: var(--text-dim); }
+.analysis-config .btn-sm { font-size: 10px; padding: 2px 6px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; color: var(--text); }
+.analysis-empty { padding: 16px 8px; text-align: center; color: var(--text-dim); font-size: 12px; }
+.analysis-engine { border-bottom: 1px solid var(--border); }
+.analysis-engine-header { display: flex; align-items: center; gap: 6px; padding: 6px 4px; cursor: pointer; font-size: 12px; }
+.analysis-engine-header:hover { background: var(--bg-hover); }
+.analysis-engine-header .finding-count { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+.analysis-engine-body.collapsed { display: none; }
+.analysis-finding { display: flex; align-items: flex-start; gap: 6px; padding: 4px 8px; cursor: pointer; font-size: 11px; border-left: 3px solid transparent; }
+.analysis-finding:hover { background: var(--bg-hover); }
+.analysis-finding.severity-critical { border-left-color: #ef4444; }
+.analysis-finding.severity-warning { border-left-color: #f59e0b; }
+.analysis-finding.severity-info { border-left-color: #3b82f6; }
+.finding-icon { font-size: 10px; flex-shrink: 0; margin-top: 2px; }
+.severity-critical .finding-icon { color: #ef4444; }
+.severity-warning .finding-icon { color: #f59e0b; }
+.severity-info .finding-icon { color: #3b82f6; }
+.finding-text { flex: 1; min-width: 0; }
+.finding-title { font-weight: 500; }
+.finding-desc { color: var(--text-dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finding-tooltip { display: none; padding: 6px 8px; margin-top: 4px; background: var(--bg-hover, rgba(255,255,255,0.05)); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; line-height: 1.4; white-space: normal; }
+.analysis-finding:hover .finding-tooltip { display: block; }
+.finding-tooltip-desc { color: var(--text); margin-bottom: 4px; }
+.finding-tooltip-suggestion { color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 4px; }
+.finding-layer { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.threshold-group { margin-bottom: 8px; }
+.threshold-group-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 0 2px; }
+.threshold-group-hint { font-size: 9px; color: var(--text-dim); opacity: 0.7; margin-bottom: 4px; }
+.threshold-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+.threshold-row label { color: var(--text-dim); white-space: nowrap; }
+.threshold-input { width: 46px; font-size: 11px; padding: 2px 4px; background: var(--bg-input, var(--bg)); border: 1px solid var(--border); border-radius: 3px; color: var(--text); text-align: center; }
+.measure-label {
+  position: absolute;
+  background: rgba(0,0,0,0.8);
+  color: #4fc3f7;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 15;
+}
+[data-theme="light"] .measure-label {
+  background: rgba(255,255,255,0.9);
+  color: #0277bd;
+}
+
+/* INLINE TOOLTIPS */
+.tooltip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  color: #888;
+  font-size: 9px;
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+[data-theme="light"] .tooltip-badge {
+  background: rgba(0,0,0,0.08);
+}
+.tooltip-badge.pulse {
+  animation: tooltipPulse 2s ease-in-out 3;
+}
+@keyframes tooltipPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 4px rgba(100,181,246,0.6); }
+}
+.inline-tooltip {
+  position: fixed;
+  background: #333;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  max-width: 250px;
+  z-index: 1000;
+  pointer-events: none;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+[data-theme="light"] .inline-tooltip {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* ===== COMMAND PALETTE ===== */
+.command-palette-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.command-palette-card {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  width: 480px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+[data-theme="light"] .command-palette-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+#cmdPaletteInput {
+  padding: 12px 16px;
+  font-size: 15px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #e0e0e0;
+  outline: none;
+  font-family: inherit;
+}
+[data-theme="light"] #cmdPaletteInput {
+  border-bottom-color: #eee;
+  color: #333;
+}
+#cmdPaletteInput::placeholder { color: #666; }
+[data-theme="light"] #cmdPaletteInput::placeholder { color: #999; }
+.command-palette-results {
+  overflow-y: auto;
+  flex: 1;
+}
+.cmd-result {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #ccc;
+}
+[data-theme="light"] .cmd-result { color: #333; }
+.cmd-result:hover, .cmd-result.selected {
+  background: rgba(100,181,246,0.15);
+}
+.cmd-result .cmd-label { flex: 1; }
+.cmd-result .cmd-category {
+  font-size: 11px;
+  color: #666;
+  margin-right: 12px;
+}
+.cmd-result .cmd-shortcut {
+  font-size: 11px;
+  color: #888;
+  background: rgba(255,255,255,0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+}
+[data-theme="light"] .cmd-result .cmd-shortcut {
+  background: rgba(0,0,0,0.06);
+  color: #666;
+}
+
+/* ===== CONTEXT MENU ===== */
+.viewer-context-menu {
+  position: fixed;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 220px;
+  z-index: 1500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+[data-theme="light"] .viewer-context-menu {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.ctx-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #e0e0e0;
+  white-space: nowrap;
+}
+[data-theme="light"] .ctx-item { color: #333; }
+.ctx-item:hover { background: rgba(100,181,246,0.2); }
+.ctx-item.disabled {
+  color: #888;
+  cursor: default;
+  font-style: italic;
+  font-size: 12px;
+}
+.ctx-item.disabled:hover { background: none; }
+.ctx-divider {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}
+[data-theme="light"] .ctx-divider { background: #eee; }
+.diagnostic-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 8px;
+  cursor: pointer;
+  padding: 0 5px;
+  vertical-align: middle;
+}
+.badge-ok { background: #2e7d32; color: #fff; }
+.badge-warning { background: #f57f17; color: #fff; }
+.badge-critical { background: #c62828; color: #fff; }
+.badge-info { background: #1565c0; color: #fff; }
+
+/* INSIGHTS PANEL */
+.insights-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: #f57f17;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 12;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.insights-badge.critical { background: #c62828; }
+.insights-badge.warning { background: #f57f17; }
+.insights-badge.info { background: #1565c0; }
+
+.insights-panel {
+  position: absolute;
+  top: 36px;
+  right: 12px;
+  width: 340px;
+  max-height: 320px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  z-index: 13;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+[data-theme="light"] .insights-panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.insights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  font-weight: bold;
+  color: #e0e0e0;
+}
+[data-theme="light"] .insights-header {
+  border-bottom-color: #eee;
+  color: #333;
+}
+.insights-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.insights-btn:hover { color: #fff; }
+[data-theme="light"] .insights-btn:hover { color: #333; }
+.insights-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #ccc;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+[data-theme="light"] .insight-item {
+  color: #444;
+  border-bottom-color: rgba(0,0,0,0.05);
+}
+.insight-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.insight-msg { flex: 1; line-height: 1.4; }
+.insight-action {
+  background: rgba(100,181,246,0.15);
+  border: 1px solid rgba(100,181,246,0.3);
+  color: #64b5f6;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.insight-action:hover { background: rgba(100,181,246,0.25); }
+.insight-dismiss {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.insight-dismiss:hover { color: #e57373; }
+
+/* ===== GUIDED TOUR ===== */
+.tour-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 3000;
+}
+.tour-overlay.has-spotlight {
+  background: none;
+}
+.tour-overlay.has-spotlight::before {
+  content: '';
+  position: fixed;
+  left: var(--spot-x);
+  top: var(--spot-y);
+  width: var(--spot-w);
+  height: var(--spot-h);
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+  z-index: 3001;
+  pointer-events: none;
+}
+.tour-card {
+  position: fixed;
+  background: #1e1e1e;
+  border: 1px solid #555;
+  border-radius: 10px;
+  padding: 16px 20px;
+  width: 320px;
+  z-index: 3002;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  color: #e0e0e0;
+}
+[data-theme="light"] .tour-card {
+  background: #fff;
+  border-color: #ddd;
+  color: #333;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.tour-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.tour-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #bbb;
+  margin-bottom: 14px;
+}
+[data-theme="light"] .tour-text { color: #555; }
+.tour-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+.tour-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #555;
+}
+.tour-dot.active { background: #64b5f6; }
+.tour-buttons {
+  display: flex;
+  gap: 6px;
+}
+.tour-btn {
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: transparent;
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tour-btn:hover { background: rgba(255,255,255,0.1); }
+.tour-btn.tour-next {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.tour-btn.tour-next:hover { background: #1565c0; }
+[data-theme="light"] .tour-btn { border-color: #ccc; color: #555; }
+[data-theme="light"] .tour-btn:hover { background: rgba(0,0,0,0.05); }
+[data-theme="light"] .tour-btn.tour-next { color: #fff; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="toast-container" id="toastContainer"></div>
+  <!-- HEADER -->
+  <header>
+    <button class="drawer-toggle" onclick="document.getElementById('panelLeft').classList.toggle('drawer-open')" title="Toggle layers">&#9776;</button>
+    <div class="logo"><span>P</span>roofPrint <small style="font-size:10px;letter-spacing:.08em;opacity:.7">U1</small></div>
+    <select id="firmwareSelect" onchange="onFirmwareChange(this.value)" data-tooltip="Select your printer firmware for correct pause commands">
+      <option value="u1" selected>Snapmaker U1</option>
+      <option value="bambu">Bambu Lab</option>
+      <option value="klipper">Klipper</option>
+      <option value="marlin">Marlin</option>
+      <option value="rrf">RepRapFirmware</option>
+    </select>
+    <div id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      <span>Drop a U1 G-code file to create a print-readiness report</span>
+    </div>
+    <input type="file" id="fileInput" accept=".gcode,.gco,.g,.bgcode">
+    <div id="fileInfo">
+      <span class="fname" id="fileName"></span>&nbsp;&nbsp;
+      <span id="fileMeta"></span>
+    </div>
+    <button id="themeToggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-size:14px;cursor:pointer" title="Toggle theme" data-tooltip="Switch between dark and light theme">
+      <span id="themeIcon">&#9789;</span>
+    </button>
+    <button style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text-dim);font-weight:700;font-size:14px;cursor:pointer" onclick="toggleShortcutsOverlay()" title="Keyboard shortcuts">?</button>
+    <button id="exportBtn" onclick="exportGcode()">Export G-Code</button>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <!-- LEFT: LAYERS -->
+    <div class="panel-left" id="panelLeft">
+      <div class="panel-header">Layers</div>
+      <input type="text" id="layerSearch" placeholder="Search layers..." oninput="filterLayers(this.value)">
+      <div id="layerList">
+        <div class="empty-state" id="layerEmpty">
+          <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+          <p>Upload a U1 G-code file to inspect layers and print risk</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: PREVIEW -->
+    <div class="panel-center">
+      <div class="parse-progress" id="parseProgress" style="display:none">
+        <div class="bar-label" id="parseLabel">Parsing...</div>
+        <div class="bar-wrap"><div class="bar-fill" id="parseBar" style="width:0%"></div></div>
+      </div>
+      <div class="preview-toolbar">
+        <div class="view-toggle">
+          <button class="active" onclick="setView('code')" id="viewCodeBtn">Code</button>
+          <button onclick="setView('visual')" id="viewVisualBtn">Visual</button>
+          <button onclick="setView('warp')" id="viewWarpBtn">Warp</button>
+          <button onclick="setView('reference')" id="viewRefBtn">Reference</button>
+        </div>
+        <span>Go to layer:</span>
+        <input type="number" class="jump-input" id="jumpLayer" min="0" placeholder="#" onchange="jumpToLayer(+this.value)">
+        <button class="hole-detect-btn" id="holeDetectToggle" onclick="toggleHoleMode()" title="Toggle hole detection mode">Hole Detect</button>
+        <button class="hole-detect-btn" id="measureToggle" onclick="toggleMeasureMode()" title="Measure distance (M)" data-tooltip="Click two points to measure distance (M)">Measure</button>
+        <button class="hole-detect-btn" id="pauseSelectToggle" onclick="togglePauseSelectMode()" title="Click in 3D view to select pause point">Pause Select</button>
+        <button class="hole-detect-btn" id="editModeToggle" onclick="toggleEditMode()" title="Select and delete moves">Edit</button>
+        <button class="hole-detect-btn" id="crossSectionToggle" onclick="toggleCrossSection()" title="Cross-section view (X)">Cross-Section</button>
+        <button class="hole-detect-btn" id="flowArrowsToggle" onclick="toggleFlowArrows()" title="Flow direction arrows (D)" data-tooltip="Show directional arrows along print paths (D)">Arrows</button>
+        <button class="hole-detect-btn" id="compareToggle" onclick="toggleCompareMode()" title="Layer comparison (C)" data-tooltip="Compare current layer with another layer or file (C)">Compare</button>
+        <div class="color-picker-row" id="colorPickerRow">
+          <button class="color-swatch active" data-color="#ff3333" style="background:#ff3333" onclick="setHighlightColor('#ff3333')" title="Red"></button>
+          <button class="color-swatch" data-color="#ffdd00" style="background:#ffdd00" onclick="setHighlightColor('#ffdd00')" title="Yellow"></button>
+          <button class="color-swatch" data-color="#ff33ff" style="background:#ff33ff" onclick="setHighlightColor('#ff33ff')" title="Magenta"></button>
+          <button class="color-swatch" data-color="#33ff33" style="background:#33ff33" onclick="setHighlightColor('#33ff33')" title="Lime"></button>
+          <input type="color" class="color-custom-input" id="customColorInput" value="#ff3333" onchange="setHighlightColor(this.value)" title="Custom color">
+        </div>
+        <span style="margin-left:auto" id="previewInfo"></span>
+      </div>
+      <div id="gcodePreview">
+        <div class="empty-state" id="previewEmpty">
+          <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+          <p>Upload a U1 G-code file to inspect, review, and prepare it</p>
+        </div>
+      </div>
+      <div id="referenceView" class="hidden">
+        <div class="ref-search-bar">
+          <input type="text" class="input" id="refSearch" placeholder="Search commands (e.g. G1, home, temperature...)" oninput="filterReferenceCards()">
+          <div class="ref-firmware-badge" id="refFirmwareBadge"></div>
+        </div>
+        <div class="ref-main">
+          <div class="ref-sidebar" id="refSidebar"></div>
+          <div class="ref-cards-area" id="refContent"></div>
+        </div>
+      </div>
+      <div class="viewer-wrap" id="viewerWrap">
+        <div class="viewer-canvas-area">
+        <canvas id="viewerCanvas"></canvas>
+        <div id="insightsBadge" class="insights-badge" style="display:none;" onclick="toggleInsightsPanel()" data-tooltip="Contextual suggestions and diagnostic findings">
+          <span id="insightsCount">0</span> issues
+        </div>
+        <div id="insightsPanel" class="insights-panel" style="display:none;">
+          <div class="insights-header">
+            <span>Insights</span>
+            <div>
+              <button onclick="dismissAllInsights()" title="Dismiss all" class="insights-btn">Clear</button>
+              <button onclick="toggleInsightsPanel()" title="Close" class="insights-btn">&times;</button>
+            </div>
+          </div>
+          <div id="insightsList" class="insights-list"></div>
+        </div>
+        <div class="viewer-bottom-left">
+          <div id="statsOverlay" class="stats-overlay" style="display:none;">
+            <div id="statsLayerInfo"></div>
+            <div id="statsHoverInfo" style="display:none;"></div>
+          </div>
+          <div class="viewer-legend" id="viewerLegend" style="display:none"></div>
+        </div>
+        <div id="compareControls" class="compare-controls" style="display:none;">
+          <label>Compare layer: <input type="number" id="compareLayerInput" min="0" style="width:60px;"></label>
+          <button id="compareFileBtn" class="hole-detect-btn" title="Compare with another file" style="margin-left:6px;">Compare File</button>
+          <input type="file" id="compareFileInput" accept=".gcode,.gco,.g" style="display:none;">
+          <div id="compareDiffStats" class="compare-diff-stats"></div>
+        </div>
+        <div class="viewer-overlay" id="viewerOverlay"></div>
+        <div class="edit-mode-banner" id="editModeBanner">Edit Mode — Experimental</div>
+        <div id="warpControls" class="warp-controls hidden">
+          <label>Deformation: <span id="deformLabel">0x</span></label>
+          <input type="range" id="deformSlider" min="0" max="50" value="0" step="1">
+        </div>
+        <div id="editInfoPanel">
+          <div class="edit-line" id="editLineText"></div>
+          <div class="edit-meta" id="editLineMeta"></div>
+          <div class="edit-params" id="editParamsContainer"></div>
+          <div class="edit-actions">
+            <button class="edit-apply" id="editApplyBtn" onclick="applyEditParams()" style="display:none">Apply</button>
+            <button class="edit-delete" onclick="deleteSelectedMove()">Delete</button>
+            <button class="edit-cancel" onclick="cancelEditSelection()">Cancel</button>
+          </div>
+        </div>
+        <div id="transformPanel">
+          <div class="transform-header">
+            <span id="transformCount">0 moves selected</span>
+            <a id="transformClear" onclick="clearMultiSelection()">Clear</a>
+          </div>
+          <div class="transform-section">
+            <label>Translate</label>
+            <div class="transform-row">
+              <span class="field-label">X</span>
+              <input type="number" id="transformTX" value="0" step="0.1" oninput="onTransformInput()">
+              <span class="field-label">Y</span>
+              <input type="number" id="transformTY" value="0" step="0.1" oninput="onTransformInput()">
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Rotate</label>
+            <div class="transform-row">
+              <span class="field-label">Angle</span>
+              <input type="number" id="transformAngle" value="0" step="1" oninput="onTransformInput()">
+              <span class="field-label">&deg;</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Scale</label>
+            <div class="transform-row">
+              <span class="field-label"></span>
+              <input type="number" id="transformScale" value="100" step="1" min="1" oninput="onTransformInput()">
+              <span class="field-label">%</span>
+            </div>
+          </div>
+          <div class="transform-section">
+            <label>Mirror</label>
+            <div class="mirror-btns">
+              <button class="mirror-btn" id="mirrorXBtn" onclick="toggleMirrorX()">X-Axis</button>
+              <button class="mirror-btn" id="mirrorYBtn" onclick="toggleMirrorY()">Y-Axis</button>
+            </div>
+          </div>
+          <div class="transform-actions">
+            <button class="transform-apply" onclick="applyTransform()">Apply</button>
+            <button class="transform-cancel" onclick="cancelTransform()">Cancel</button>
+          </div>
+        </div>
+        <div class="cross-section-controls" id="crossSectionControls">
+          <label>Rotation <span id="csRotValue">0</span>&deg;</label>
+          <input type="range" id="csRotSlider" min="0" max="360" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Tilt <span id="csTiltValue">0</span>&deg;</label>
+          <input type="range" id="csTiltSlider" min="0" max="90" value="0" step="1" oninput="onCrossSectionChange()">
+          <label>Sweep <span id="csSweepValue">0</span>mm</label>
+          <input type="range" id="csSweepSlider" min="0" max="100" value="50" step="0.1" oninput="onCrossSectionChange()">
+          <div class="cs-buttons">
+            <button onclick="flipCrossSection()" title="Flip clipped side">Flip</button>
+            <button onclick="resetCrossSection()" title="Reset to default">Reset</button>
+          </div>
+        </div>
+        <div id="printerProfilePanel" class="panel collapsed">
+          <div class="panel-header" onclick="togglePrinterProfile()">
+            <span>Printer Profile</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content">
+            <div class="field-row">
+              <label>Acceleration (mm/s²)</label>
+              <input type="number" id="profileAccel" value="500" min="100" max="10000" step="100">
+            </div>
+            <div class="field-row">
+              <label>Jerk (mm/s)</label>
+              <input type="number" id="profileJerk" value="8" min="1" max="30" step="1">
+            </div>
+            <div class="field-row">
+              <label>Firmware</label>
+              <select id="profileFirmware">
+                <option value="u1" selected>Snapmaker U1 (Klipper)</option>
+                <option value="marlin">Marlin</option>
+                <option value="klipper">Klipper</option>
+                <option value="rrf">RepRapFirmware</option>
+              </select>
+            </div>
+            <button onclick="applyPrinterProfile()">Apply &amp; Re-analyze</button>
+            <button onclick="resetPrinterProfile()">Reset to Inferred</button>
+          </div>
+        </div>
+        </div>
+        <div class="layer-slider-wrap">
+          <label id="sliderLabel">Layer 0</label>
+          <input type="range" id="layerSlider" min="0" max="0" value="0" oninput="onSliderChange(+this.value)">
+          <div class="slider-ticks" id="sliderTicks"></div>
+        </div>
+        <div class="sim-controls" id="simControls">
+          <button onclick="simSkipPrev()" title="Previous layer">&#9198;</button>
+          <button id="simPlayBtn" onclick="toggleSimulation()" title="Play/Pause simulation (P)">&#9654; Play</button>
+          <button onclick="simSkipNext()" title="Next layer">&#9197;</button>
+          <div class="sim-progress" id="simProgress" onclick="onSimProgressClick(event)">
+            <div class="sim-progress-fill" id="simProgressFill" style="width:0%"></div>
+          </div>
+          <span class="sim-label" id="simMoveLabel">Move 0/0</span>
+          <span class="sim-pause-flash" id="simPauseFlash">&#9208; PAUSE</span>
+          <label style="font-size:11px;color:var(--text-dim)">Speed</label>
+          <input type="range" id="simSpeed" min="0" max="100" value="50" oninput="onSimSpeedChange(+this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: TOOLS -->
+    <div class="panel-right" id="panelRight">
+      <div class="panel-right-resize" id="panelRightResize"></div>
+      <div class="tabs">
+        <button class="tab active" data-tab="pause" onclick="switchTab('pause')" data-tooltip="Add pauses to stop the print at specific layers">Pause</button>
+        <button class="tab" data-tab="filament" onclick="switchTab('filament')" data-tooltip="Insert filament changes for multi-color prints">Filament</button>
+        <button class="tab" data-tab="eject" onclick="switchTab('eject')" data-tooltip="Auto-eject the print when finished">Eject</button>
+        <button class="tab" data-tab="zoffset" onclick="switchTab('zoffset')" data-tooltip="Adjust Z-height over a range of layers">Z-Offset</button>
+        <button class="tab" data-tab="custom" onclick="switchTab('custom')" data-tooltip="Insert custom G-code at any layer">Custom</button>
+        <button class="tab" data-tab="inserts" onclick="switchTab('inserts')" data-tooltip="Auto-detect holes for threaded inserts">Inserts</button>
+        <button class="tab" data-tab="reference" onclick="switchTab('reference')" data-tooltip="G-code command reference guide">Reference</button>
+        <button class="tab" data-tab="recovery" onclick="switchTab('recovery')" data-tooltip="Resume a failed print from a specific layer">Recovery</button>
+        <button class="tab" data-tab="cooling" onclick="switchTab('cooling')" data-tooltip="Fan speed profiles and cooling analysis">Cooling</button>
+        <button class="tab" data-tab="pa-tuner" onclick="switchTab('pa-tuner')" data-tooltip="Generate pressure advance calibration patterns">PA Tuning</button>
+        <button class="tab" data-tab="u1-link" onclick="switchTab('u1-link')" data-tooltip="Inspect a U1 on your local network without sending control commands">U1 Link</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis')" data-tooltip="Run diagnostics to find potential print problems">Analysis</button>
+      </div>
+
+      <!-- PAUSE TAB -->
+      <div class="tab-content active" id="tab-pause">
+        <div class="form-group">
+          <label>Layer Number</label>
+          <input type="number" class="input" id="pauseLayer" min="0" placeholder="e.g. 42">
+        </div>
+        <div class="form-group">
+          <label>Line Number <span style="opacity:0.5">(optional — leave empty for layer start)</span></label>
+          <input type="number" class="input" id="pauseLineNumber" min="1" placeholder="Click a line in code view or enter manually">
+        </div>
+        <div class="form-group">
+          <label>Reminder Message (optional)</label>
+          <input type="text" class="input" id="pauseMsg" placeholder="e.g. Insert magnet here">
+        </div>
+        <div class="form-group">
+          <label>Pause Command</label>
+          <div class="radio-group" id="pauseTypeGroup"></div>
+          <div class="hint" id="pauseHint"></div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="pauseMoveHead" checked>
+          <label for="pauseMoveHead">Move head away before pause</label>
+        </div>
+        <button class="btn btn-primary" onclick="addPause()">+ Add Pause</button>
+      </div>
+
+      <!-- FILAMENT TAB -->
+      <div class="tab-content" id="tab-filament">
+        <div class="form-group">
+          <label>Layer Number</label>
+          <input type="number" class="input" id="filamentLayer" min="0" placeholder="e.g. 10">
+        </div>
+        <div class="form-row" id="filamentRow">
+          <div class="form-group" id="filamentSlotGroup">
+            <label>Filament Slot (AMS)</label>
+            <select class="select" id="filamentSlot">
+              <option value="0">Slot 1 (S0)</option>
+              <option value="1">Slot 2 (S1)</option>
+              <option value="2">Slot 3 (S2)</option>
+              <option value="3">Slot 4 (S3)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Command</label>
+            <select class="select" id="filamentCmd"></select>
+          </div>
+        </div>
+        <div class="hint" id="filamentHint" style="margin-bottom:14px"></div>
+        <button class="btn btn-primary" onclick="addFilamentChange()">+ Add Filament Change</button>
+      </div>
+
+      <!-- EJECT TAB -->
+      <div class="tab-content" id="tab-eject">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Bed Y Position (mm)</label>
+            <input type="number" class="input" id="ejectY" value="220" min="0" max="300">
+          </div>
+          <div class="form-group">
+            <label>Head Z Clearance (mm)</label>
+            <input type="number" class="input" id="ejectZ" value="10" min="0" max="50">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Feed Rate (mm/min)</label>
+          <input type="number" class="input" id="ejectFeed" value="6000" min="1000" max="15000" step="500">
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectHeatersOff" checked>
+          <label for="ejectHeatersOff">Turn off heaters after eject</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectHomeZ">
+          <label for="ejectHomeZ">Home Z axis after eject</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ejectLoop">
+          <label for="ejectLoop">Loop mode (restart print)</label>
+        </div>
+        <div class="hint" id="ejectHint" style="margin-bottom:14px"></div>
+        <button class="btn btn-primary" onclick="addEject()">+ Add Eject Sequence</button>
+      </div>
+
+      <!-- Z-OFFSET TAB -->
+      <div class="tab-content" id="tab-zoffset">
+        <div class="form-group">
+          <label>Start Layer</label>
+          <input type="number" class="input" id="zoffsetLayer" min="0" placeholder="e.g. 10">
+        </div>
+        <div class="form-group">
+          <label>End Layer (optional)</label>
+          <input type="text" class="input" id="zoffsetEndLayer" placeholder="Leave blank for all remaining">
+          <div class="hint">If blank, the offset applies from the start layer to the end of the print.</div>
+        </div>
+        <div class="form-group">
+          <label>Z-Offset (mm)</label>
+          <input type="number" class="input" id="zoffsetValue" step="0.01" placeholder="e.g. 0.1 or -0.05">
+          <div class="hint">Positive = raise nozzle, negative = lower nozzle. Adjusts all Z moves within the specified layer range.</div>
+        </div>
+        <div class="form-group">
+          <label>Note (optional)</label>
+          <input type="text" class="input" id="zoffsetNote" placeholder="e.g. Compensate for insert">
+        </div>
+        <button class="btn btn-primary" onclick="addZOffset()">+ Add Z-Offset</button>
+      </div>
+
+      <!-- CUSTOM TAB -->
+      <div class="tab-content" id="tab-custom">
+        <div class="form-group">
+          <label>Layer Number (or "end" for file end)</label>
+          <input type="text" class="input" id="customLayer" placeholder="e.g. 50 or end">
+        </div>
+        <div class="form-group">
+          <label>Custom G-Code</label>
+          <textarea class="input" id="customGcode" rows="6" style="font-family:var(--mono);font-size:12px;resize:vertical" placeholder="Enter custom G-code lines...&#10;e.g.&#10;G91&#10;G0 Z5&#10;G90"></textarea>
+        </div>
+        <div class="hint" style="margin-bottom:14px">Insert any custom G-code at a specific layer or at the end of the file. Each line will be inserted as-is.</div>
+        <button class="btn btn-primary" onclick="addCustom()">+ Add Custom G-Code</button>
+      </div>
+
+      <!-- INSERTS TAB -->
+      <div class="tab-content" id="tab-inserts">
+        <div class="section-label" style="border-top:none;padding-top:0">Detection</div>
+        <div class="detect-controls">
+          <button class="btn btn-primary" onclick="detectHolesOnLayer()" style="width:auto;flex:1">Detect (Layer)</button>
+          <button class="btn btn-primary" onclick="scanAllHoles()" style="width:auto;flex:1" id="scanAllBtn">Scan All Layers</button>
+        </div>
+        <div class="filter-row">
+          <label>Min diameter</label>
+          <input type="range" id="holeMinDia" min="1" max="20" value="4" step="0.5" oninput="document.getElementById('holeMinDiaVal').textContent=this.value+'mm'">
+          <span class="filter-val" id="holeMinDiaVal">4mm</span>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="holeIgnoreInfill" checked>
+          <label for="holeIgnoreInfill">Ignore infill regions</label>
+        </div>
+
+        <div class="section-label">Detected Holes</div>
+        <div class="hole-list-wrap" id="holeListWrap">
+          <div class="no-holes" id="noHoles">Click "Detect Holes" on a layer with the Visual view active</div>
+        </div>
+
+        <div class="section-label">Insert Configuration</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Insert Height</label>
+            <input type="number" class="input" id="insertHeight" min="0.1" step="0.1" value="3" placeholder="mm">
+          </div>
+          <div class="form-group">
+            <label>Unit</label>
+            <select class="select" id="insertHeightUnit">
+              <option value="mm">mm</option>
+              <option value="layers">layers</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Insert Diameter</label>
+            <input type="number" class="input" id="insertDiameter" min="0.5" step="0.5" value="6" placeholder="mm">
+          </div>
+          <div class="form-group">
+            <label>Label</label>
+            <input type="text" class="input" id="insertLabel" placeholder="e.g. Magnet">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Pause Command</label>
+          <div class="radio-group" id="insertPauseTypeGroup"></div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="insertMoveHead" checked>
+          <label for="insertMoveHead">Move head away before pause</label>
+        </div>
+        <div id="computedPauseInfo"></div>
+        <button class="btn btn-primary" onclick="addInsertsForSelection()">+ Add Pause for Selected Holes</button>
+      </div>
+
+      <!-- RECOVERY TAB -->
+      <div class="tab-content" id="tab-recovery">
+        <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text);">
+          Recovery mode reprints from a specific layer at the bed surface. Print it flat, then glue the two halves together.
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Resume from Layer</label>
+            <input type="number" class="input" id="recoveryLayer" min="1" placeholder="e.g. 50" oninput="syncRecoveryFromLayer()">
+          </div>
+          <div class="form-group">
+            <label>or Height (mm)</label>
+            <input type="number" class="input" id="recoveryHeight" min="0" step="0.01" placeholder="e.g. 10.0" oninput="syncRecoveryFromHeight()">
+          </div>
+        </div>
+        <div class="hint" style="margin-bottom:14px">Enter either the layer number or measure the failed print height with calipers. The other field updates automatically.</div>
+        <div class="form-group">
+          <div class="hint">Z-heights are shifted so the resume layer prints at the original first-layer height. Feedrates on the resume layer are overridden with first-layer speeds for bed adhesion.</div>
+        </div>
+        <button class="btn btn-primary" onclick="addRecovery()">+ Add Recovery</button>
+      </div>
+
+      <!-- COOLING TAB -->
+      <div class="tab-content" id="tab-cooling">
+        <div class="section-label">Fan Rules</div>
+        <div id="fanRulesList" class="fan-rules-list"></div>
+        <button class="std-btn" onclick="addFanRuleUI()" style="margin-top:6px;width:100%">+ Add Rule</button>
+
+        <div class="section-label" style="margin-top:12px">Fan Curve
+          <span class="fan-channel-toggles" id="fanChannelToggles">
+            <label class="fan-ch-toggle"><input type="checkbox" checked onchange="toggleFanChannel(0, this.checked)"><span style="color:#60a5fa">P0</span></label>
+            <label class="fan-ch-toggle"><input type="checkbox" onchange="toggleFanChannel(1, this.checked)"><span style="color:#4ade80">P1</span></label>
+            <label class="fan-ch-toggle"><input type="checkbox" onchange="toggleFanChannel(2, this.checked)"><span style="color:#fb923c">P2</span></label>
+          </span>
+        </div>
+        <canvas id="fanCurveCanvas" width="400" height="180" style="width:100%;border:1px solid var(--border);border-radius:6px;cursor:crosshair"></canvas>
+
+        <div class="section-label" style="margin-top:12px">Actions</div>
+        <div id="fanSummary" class="fan-summary"></div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="std-btn" onclick="applyFanProfile()" style="flex:1">Apply</button>
+          <button class="std-btn" onclick="resetFanProfile()" style="flex:1">Reset</button>
+        </div>
+      </div>
+
+      <!-- PA TUNING TAB -->
+      <div class="tab-content" id="tab-pa-tuner">
+        <div class="section-label">Firmware</div>
+        <div id="paFirmwareInfo" class="pa-firmware-info"></div>
+
+        <div class="section-label" style="margin-top:10px">Base K-Factor</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="paBaseK" class="input" min="0" max="0.2" step="0.001" value="0" style="width:90px" onchange="updatePaBaseK(this.value)">
+          <span style="opacity:0.6;font-size:12px">Default for all types</span>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Per-Feature K-Factor</div>
+        <div id="paFeatureTable" class="pa-feature-table">
+          <div style="opacity:0.5;font-size:12px;padding:8px">Load a file to see motion types</div>
+        </div>
+        <button class="std-btn" onclick="resetPaOverrides()" style="margin-top:6px;width:100%">Reset All to Base K</button>
+
+        <div class="section-label" style="margin-top:12px;display:flex;align-items:center">
+          <span>Calibration Pattern</span>
+          <button class="std-btn" onclick="togglePaCalibration()" style="font-size:11px;padding:2px 8px;margin-left:auto" id="paCalibToggle">Show</button>
+        </div>
+        <div id="paCalibSection" style="display:none">
+          <div style="font-size:12px;opacity:0.7;margin-bottom:8px">
+            Generates a standalone G-code file with slow→fast line pairs at varying K values.
+            Look for the cleanest transition to find your optimal K.
+          </div>
+          <div class="pa-calib-grid">
+            <label>K Start</label>
+            <input type="number" id="paCalibKStart" class="input" min="0" max="0.2" step="0.005" value="0">
+            <label>K End</label>
+            <input type="number" id="paCalibKEnd" class="input" min="0" max="0.2" step="0.005" value="0.1">
+            <label>K Step</label>
+            <input type="number" id="paCalibKStep" class="input" min="0.001" max="0.05" step="0.001" value="0.005">
+            <label>Nozzle °C</label>
+            <input type="number" id="paCalibNozzle" class="input" min="150" max="300" step="5" value="200">
+            <label>Bed °C</label>
+            <input type="number" id="paCalibBed" class="input" min="0" max="120" step="5" value="60">
+            <label>Filament</label>
+            <select id="paCalibFilament" class="input">
+              <option value="1.75">1.75mm</option>
+              <option value="2.85">2.85mm</option>
+            </select>
+          </div>
+          <button class="std-btn" onclick="generatePaCalibration()" style="margin-top:8px;width:100%">Generate &amp; Download</button>
+        </div>
+
+        <div class="section-label" style="margin-top:12px">Actions</div>
+        <div id="paSummary" class="pa-summary"></div>
+        <button class="std-btn" onclick="applyPaCommands()" style="margin-top:6px;width:100%">Apply</button>
+      </div>
+
+      <!-- U1 LINK TAB -->
+      <div class="tab-content" id="tab-u1-link">
+        <div class="section-label">Read Only U1 Connection</div>
+        <p style="font-size:12px;line-height:1.45;color:var(--text-dim);margin:4px 0 10px">Inspect printer and toolhead status through the U1 local Moonraker API. This feature never uploads files or controls a printer.</p>
+        <div class="form-group">
+          <label>U1 Host</label>
+          <input class="input" id="u1Host" value="http://U1.local:7125" placeholder="http://U1.local:7125">
+        </div>
+        <button class="std-btn" onclick="inspectU1Connection()" style="width:100%">Inspect U1</button>
+        <div id="u1LinkStatus" class="analysis-empty" style="margin-top:10px">Connect only while this browser is on the same LAN as the U1.</div>
+      </div>
+
+      <!-- ANALYSIS TAB -->
+      <div class="tab-content" id="tab-analysis">
+        <div class="analysis-config">
+          <div class="field-row">
+            <label>Printer</label>
+            <span id="analysisPrinterInfo" style="flex:1;font-size:11px">Not loaded</span>
+            <button class="btn-sm" onclick="togglePrinterProfile()">Configure</button>
+          </div>
+          <div class="field-row">
+            <label>Material</label>
+            <select id="analysisMaterialType" onchange="onMaterialChange(this.value)" style="flex:1;font-size:11px">
+              <option value="PLA">PLA</option>
+              <option value="PETG">PETG</option>
+              <option value="ABS">ABS</option>
+              <option value="ASA">ASA</option>
+              <option value="TPU">TPU</option>
+              <option value="PC">PC</option>
+              <option value="Nylon">Nylon</option>
+              <option value="PLA-CF">PLA-CF</option>
+              <option value="PETG-CF">PETG-CF</option>
+              <option value="ABS-GF">ABS-GF</option>
+              <option value="ASA-CF">ASA-CF</option>
+              <option value="PC-FR">PC-FR</option>
+              <option value="PET-CF">PET-CF</option>
+              <option value="PA-CF">PA-CF</option>
+              <option value="PA6-CF">PA6-CF</option>
+              <option value="PA6-GF">PA6-GF</option>
+              <option value="PPA-CF">PPA-CF</option>
+              <option value="PPS-CF">PPS-CF</option>
+            </select>
+            <span id="analysisMaterialInferred" style="font-size:10px;color:var(--text-dim)"></span>
+          </div>
+          <div class="field-row" style="margin-top:6px">
+            <label>Custom JSON</label>
+            <input type="file" id="materialProfileFile" accept=".json" onchange="loadMaterialProfileFile(this)" style="font-size:10px;flex:1">
+          </div>
+          <div class="field-row" style="margin-top:8px">
+            <label>Analysis Depth</label>
+            <input type="range" id="analysisDepthSlider" min="0" max="100" value="50" style="flex:1" onchange="onAnalysisDepthChange(this.value)">
+            <span id="analysisDepthLabel" style="font-size:10px;min-width:55px;text-align:right">Balanced</span>
+          </div>
+          <div class="field-row" style="margin-top:4px">
+            <label>Environment</label>
+            <select id="analysisChamberType" onchange="onChamberTypeChange(this.value)" style="flex:1;font-size:11px">
+              <option value="open">Open (no enclosure)</option>
+              <option value="enclosed">Enclosed</option>
+              <option value="heated">Heated Chamber</option>
+            </select>
+          </div>
+          <button onclick="runAnalysis()" style="margin-top:8px;width:100%;padding:6px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Run Analysis</button>
+        </div>
+
+        <div id="analysisThresholds" class="panel collapsed">
+          <div class="panel-header" onclick="toggleAnalysisThresholds()">
+            <span>Severity Thresholds</span>
+            <span class="toggle-icon">&#9660;</span>
+          </div>
+          <div class="panel-content" id="thresholdsContent">
+          </div>
+        </div>
+
+        <div id="analysisResults">
+          <div class="analysis-empty">Load a G-code file and run analysis</div>
+        </div>
+      </div>
+
+      <!-- MODIFICATIONS LIST -->
+      <div class="mods-section">
+        <div class="mods-header">
+          <span>Modifications</span>
+          <span class="mods-count" id="modsCount">0</span>
+        </div>
+        <div id="modsList">
+          <div class="no-mods" id="noMods">No modifications added yet</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="shortcuts-overlay" id="shortcutsOverlay" onclick="if(event.target===this)toggleShortcutsOverlay()">
+  <div class="shortcuts-card">
+    <button class="close-btn" onclick="toggleShortcutsOverlay()">&times;</button>
+    <h3>Keyboard Shortcuts</h3>
+    <table>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Open file</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Toggle Code/Visual</td></tr>
+      <tr><td><kbd>W</kbd></td><td>Toggle Warp view</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Toggle Reference view</td></tr>
+      <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous/Next layer</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>0</kbd></td><td>Switch tool tab</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Reset camera</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find in file</td></tr>
+      <tr><td><kbd>X</kbd></td><td>Toggle cross-section</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Toggle measurement mode</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Toggle flow direction arrows</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Toggle layer comparison</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
+    </table>
+    <button onclick="Onboarding.start(); toggleShortcutsOverlay();" style="margin-top:12px;padding:6px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Replay Guided Tour</button>
+  </div>
+</div>
+
+<div id="commandPalette" class="command-palette-overlay" style="display:none;">
+  <div class="command-palette-card">
+    <input type="text" id="cmdPaletteInput" placeholder="Type a command..." autocomplete="off" spellcheck="false" />
+    <div id="cmdPaletteResults" class="command-palette-results"></div>
+  </div>
+</div>
+
+<div id="tourOverlay" class="tour-overlay" style="display:none;">
+  <div id="tourCard" class="tour-card">
+    <div id="tourTitle" class="tour-title"></div>
+    <div id="tourText" class="tour-text"></div>
+    <div class="tour-footer">
+      <div id="tourDots" class="tour-dots"></div>
+      <div class="tour-buttons">
+        <button id="tourPrev" class="tour-btn" onclick="Onboarding.prev()">Back</button>
+        <button class="tour-btn tour-skip" onclick="Onboarding.skip()">Skip</button>
+        <button id="tourNext" class="tour-btn tour-next" onclick="Onboarding.next()">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPTS -->
+</body>
+</html>

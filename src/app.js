@@ -1,0 +1,564 @@
+// App initialization, state, and event wiring.
+// UI functions are defined in ui.js and available via global scope in the built output.
+
+import { FIRMWARE, GCODE_REFERENCE } from './firmware.js';
+import { decodeBgcode } from './bgcode.js';
+import { UndoStack } from './undo-stack.js';
+import { InsertManager } from './insert-manager.js';
+import { HoleDetector } from './hole-detector.js';
+import { GcodeParser } from './parser.js';
+import { GcodeModifier } from './modifier.js';
+import { GcodeViewer3D } from './viewer3d.js';
+import { MotionAnalyzer } from './motion-analyzer.js';
+import { AnalysisManager } from './analysis-manager.js';
+import { StructuralAnalyzer } from './structural-analyzer.js';
+import { ThermalAnalyzer } from './thermal-analyzer.js';
+import { RetractionAnalyzer } from './retraction-analyzer.js';
+import { FlowAnalyzer } from './flow-analyzer.js';
+import { MATERIAL_PROFILES, inferMaterial, getMaterialProfile, DEFAULT_THRESHOLDS } from './material-profiles.js';
+import { computeSelectionBounds, transformPoint, transformMoves, transformGcodeLine } from './transform.js';
+import { FanProfileEngine } from './fan-profile.js';
+import { PaTuner } from './pa-tuner.js';
+
+let currentFirmware = 'u1';
+
+// ===== APP STATE =====
+const parser = new GcodeParser();
+const modifier = new GcodeModifier();
+const holeDetector = new HoleDetector();
+const insertManager = new InsertManager();
+const undoStack = new UndoStack();
+const motionAnalyzer = new MotionAnalyzer();
+const structuralAnalyzer = new StructuralAnalyzer();
+const thermalAnalyzer = new ThermalAnalyzer();
+const retractionAnalyzer = new RetractionAnalyzer();
+const flowAnalyzer = new FlowAnalyzer();
+const analysisManager = new AnalysisManager();
+analysisManager.register(motionAnalyzer);
+analysisManager.register(structuralAnalyzer);
+analysisManager.register(thermalAnalyzer);
+analysisManager.register(retractionAnalyzer);
+analysisManager.register(flowAnalyzer);
+const fanProfileEngine = new FanProfileEngine();
+analysisManager.register(fanProfileEngine);
+const paTuner = new PaTuner();
+const u1MoonrakerClient = new U1MoonrakerClient();
+analysisManager.markEager('motion');
+analysisManager.markEager('flow');
+
+let analysisProfile = {
+  printer: {},
+  material: { type: 'PLA' },
+  thresholds: { ...DEFAULT_THRESHOLDS },
+  thermal: { depth: 50 },
+  environment: { ambientTemp: 22, chamberTemp: null, chamberType: 'open' },
+};
+const editUndoStack = { entries: [], index: -1, maxSize: 50 };
+let selectedLayer = null;
+let holeDetectMode = false;
+let measureMode = false;
+let measurePoints = [];
+let pauseSelectMode = false;
+let selectedMove = null;
+let hoveredMove = null;
+let editMode = false;
+let editSelectedMove = null;
+let editHoveredMove = null;
+let editOriginalParams = null;
+let editCurrentParams = null;
+let editPreviewParams = null;
+let editSelectedMoves = [];
+let editSelectionBounds = null;
+let editTransformState = null;
+let layerRangeStart = null;
+let layerRangeEnd = null;
+let crossSectionActive = false;
+let crossSectionFlipped = false;
+let reparsing = false;
+const _storedColor = localStorage.getItem('gcode_highlight_color');
+let highlightColor = /^#[0-9a-fA-F]{6}$/.test(_storedColor) ? _storedColor : '#ff3333';
+
+// Motion type display names for legend UI
+const MOTION_TYPE_LABELS = {
+  'WALL-OUTER': 'Outer Wall',
+  'WALL-INNER': 'Inner Wall',
+  'FILL': 'Infill',
+  'SOLID': 'Solid Fill',
+  'TOP': 'Top Surface',
+  'BOTTOM': 'Bottom Surface',
+  'SUPPORT': 'Support',
+  'SUPPORT-INTERFACE': 'Support Interface',
+  'OVERHANG': 'Overhang',
+  'GAP INFILL': 'Gap Fill',
+  'BRIDGE': 'Bridge',
+  'SKIRT': 'Skirt',
+  'BRIM': 'Brim',
+  'CUSTOM': 'Custom',
+  'TRAVEL': 'Travel',
+};
+
+// Default colors (hex) matching viewer3d.js TYPE_COLORS
+const DEFAULT_MOTION_COLORS = {
+  'WALL-OUTER': '#60a5fa',
+  'WALL-INNER': '#93c5fd',
+  'FILL': '#4ade80',
+  'SOLID': '#4ade80',
+  'TOP': '#22d3ee',
+  'BOTTOM': '#22d3ee',
+  'SUPPORT': '#facc15',
+  'SUPPORT-INTERFACE': '#fde68a',
+  'OVERHANG': '#fb923c',
+  'GAP INFILL': '#fb923c',
+  'BRIDGE': '#f97316',
+  'SKIRT': '#a78bfa',
+  'BRIM': '#a78bfa',
+  'CUSTOM': '#a78bfa',
+  'TRAVEL': '#555555',
+};
+
+let motionTypeVisibility = {};
+let motionTypeColors = {};
+let detectedTypes = new Set();
+let motionLegendExpanded = true;
+let motionLegendShowAll = false;
+
+// Heatmap color mode: 'motion-type' | 'speed' | 'acceleration' | 'flow'
+let colorMode = 'motion-type';
+// Cached per-layer heatmap stats: { min, max, avg }
+let heatmapLayerStats = {};
+
+// Simulation state
+let simulationPlaying = false;
+let simulationMoveIndex = 0;
+let simulationSpeed = 100; // moves per second
+let simulationRafId = null;
+let simulationPauseMoveIndices = []; // move indices where pauses are inserted
+let simulationPausedAtIndex = -1; // last pause index we stopped at (avoid re-triggering)
+
+const MOTION_TYPE_ALIASES = {
+  'OUTER WALL': 'WALL-OUTER', 'INNER WALL': 'WALL-INNER',
+  'SOLID INFILL': 'SOLID', 'SPARSE INFILL': 'FILL', 'SPARSE': 'FILL',
+  'INTERNAL SOLID INFILL': 'SOLID', 'TOP SURFACE': 'TOP', 'BOTTOM SURFACE': 'BOTTOM',
+};
+
+function initMotionTypeState() {
+  // Collect detected types from parsed moves
+  detectedTypes = new Set();
+  for (const layerNum in parser.layerMoves) {
+    for (const move of parser.layerMoves[layerNum]) {
+      if (move.extrude) {
+        const upper = move.type.toUpperCase();
+        detectedTypes.add(MOTION_TYPE_ALIASES[upper] || upper);
+      } else {
+        detectedTypes.add('TRAVEL');
+      }
+    }
+  }
+
+  // Load saved state or use defaults
+  const savedVis = localStorage.getItem('gcode_motion_visibility');
+  const savedColors = localStorage.getItem('gcode_motion_colors');
+
+  motionTypeVisibility = {};
+  motionTypeColors = {};
+
+  // Initialize all known types to defaults
+  for (const type of Object.keys(DEFAULT_MOTION_COLORS)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type];
+  }
+  // Also include any detected types not in defaults
+  for (const type of detectedTypes) {
+    if (!(type in motionTypeVisibility)) {
+      motionTypeVisibility[type] = true;
+      motionTypeColors[type] = '#e0e2e8';
+    }
+  }
+
+  // Merge saved preferences
+  if (savedVis) {
+    try {
+      const parsed = JSON.parse(savedVis);
+      for (const [type, vis] of Object.entries(parsed)) {
+        if (type in motionTypeVisibility) motionTypeVisibility[type] = vis;
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+  if (savedColors) {
+    try {
+      const parsed = JSON.parse(savedColors);
+      for (const [type, color] of Object.entries(parsed)) {
+        if (type in motionTypeColors && /^#[0-9a-fA-F]{6}$/.test(color)) {
+          motionTypeColors[type] = color;
+        }
+      }
+    } catch (e) { /* ignore corrupt data */ }
+  }
+}
+
+function saveMotionTypeState() {
+  localStorage.setItem('gcode_motion_visibility', JSON.stringify(motionTypeVisibility));
+  localStorage.setItem('gcode_motion_colors', JSON.stringify(motionTypeColors));
+}
+
+function resetMotionTypeState() {
+  localStorage.removeItem('gcode_motion_visibility');
+  localStorage.removeItem('gcode_motion_colors');
+  for (const type of Object.keys(motionTypeVisibility)) {
+    motionTypeVisibility[type] = true;
+    motionTypeColors[type] = DEFAULT_MOTION_COLORS[type] || '#e0e2e8';
+  }
+  renderMotionLegend();
+  viewer.clearBuffers();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+async function setColorMode(mode) {
+  colorMode = mode;
+  // Ensure the engine for this overlay has been analyzed (async to avoid freeze)
+  const engine = analysisManager._overlayMap.get(mode);
+  if (engine && !analysisManager.isAnalyzed(engine.name)) {
+    const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+    const label = ENGINE_LABELS[engine.name] || engine.name;
+    // Show loading overlay on the 3D canvas area (visible on Visual tab)
+    const canvasArea = document.querySelector('.viewer-canvas-area');
+    let overlay = null;
+    if (canvasArea) {
+      overlay = document.createElement('div');
+      overlay.className = 'viewer-analysis-loading';
+      overlay.innerHTML = '<div style="text-align:center"><div class="bar-label" id="viewerAnalysisLabel">Analyzing ' + label + '...</div><div class="bar-wrap"><div class="bar-fill" id="viewerAnalysisBar" style="width:0%"></div></div></div>';
+      canvasArea.appendChild(overlay);
+    }
+    await analysisManager.ensureEngineAsync(engine.name, (p) => {
+      const bar = document.getElementById('viewerAnalysisBar');
+      const lbl = document.getElementById('viewerAnalysisLabel');
+      if (bar) bar.style.width = (p * 100).toFixed(0) + '%';
+      if (lbl) lbl.textContent = 'Analyzing ' + label + '... ' + (p * 100).toFixed(0) + '%';
+    });
+    if (overlay) overlay.remove();
+  }
+  heatmapLayerStats = {};
+  resetSimulation();
+  viewer.clearBuffers();
+  renderMotionLegend();
+  if (currentView === 'visual') viewer.render(viewer.currentLayer);
+}
+
+function getHeatmapValue(move, layerNum, moveIndex) {
+  // Built-in modes (backward compatible)
+  if (colorMode === 'speed') return (move.feedRate || 0) / 60;
+  if (colorMode === 'acceleration') return move.accel || 0;
+  if (colorMode === 'flow') {
+    const dx = move.x2 - move.x1, dy = move.y2 - move.y1;
+    const moveLen = Math.hypot(dx, dy);
+    if (moveLen < 0.001 || !move.eLength) return 0;
+    const speed = (move.feedRate || 0) / 60;
+    return (move.eLength / moveLen) * speed;
+  }
+  // Engine overlay modes — route through AnalysisManager
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    return analysisManager.getOverlayValue(colorMode, layerNum, moveIndex);
+  }
+  return 0;
+}
+
+function getHeatmapLayerStats(layerNum) {
+  if (heatmapLayerStats[layerNum]) return heatmapLayerStats[layerNum];
+  // Check if current mode is an engine overlay
+  const engineOverlay = analysisManager.getSupportedOverlays().find(o => o.id === colorMode);
+  if (engineOverlay) {
+    const stats = analysisManager.getOverlayStats(colorMode, layerNum, parser.layerMoves);
+    heatmapLayerStats[layerNum] = stats;
+    return stats;
+  }
+  // Built-in modes
+  const moves = parser.layerMoves[layerNum];
+  if (!moves || moves.length === 0) return { min: 0, max: 1, avg: 0 };
+  let min = Infinity, max = -Infinity, sum = 0, count = 0;
+  for (let moveIndex = 0; moveIndex < moves.length; moveIndex++) {
+    const move = moves[moveIndex];
+    if (!move.extrude) continue;
+    const v = getHeatmapValue(move, layerNum, moveIndex);
+    if (v <= 0) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    count++;
+  }
+  if (count === 0) return { min: 0, max: 1, avg: 0 };
+  if (min === max) { min = 0; }
+  const stats = { min, max, avg: sum / count };
+  heatmapLayerStats[layerNum] = stats;
+  return stats;
+}
+
+function runEagerAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+  analysisManager.analyzeEager(parser.layerMoves, analysisProfile);
+  heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scan(parser);
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
+}
+
+async function runAnalysis() {
+  const inferredMaterial = inferMaterial(parser.lines);
+  if (!analysisProfile._manualMaterial) {
+    analysisProfile.material = getMaterialProfile(inferredMaterial);
+  }
+  analysisProfile.printer = { ...motionAnalyzer.profile };
+  analysisProfile._parsedLines = parser.lines;
+
+  const container = document.getElementById('analysisResults');
+  if (container) {
+    container.innerHTML = '<div class="analysis-progress"><div class="bar-label" id="analysisLabel">Analyzing...</div><div class="bar-wrap"><div class="bar-fill" id="analysisBar" style="width:0%"></div></div></div>';
+  }
+  const ENGINE_LABELS = { structural: 'Structural', thermal: 'Thermal', retraction: 'Retraction', motion: 'Motion', flow: 'Flow' };
+  await analysisManager.analyzeAllAsync(parser.layerMoves, analysisProfile, (info) => {
+    const label = document.getElementById('analysisLabel');
+    const bar = document.getElementById('analysisBar');
+    if (label) label.textContent = 'Analyzing ' + (ENGINE_LABELS[info.engine] || info.engine) + '... ' + (info.overall * 100).toFixed(0) + '%';
+    if (bar) bar.style.width = (info.overall * 100).toFixed(0) + '%';
+  });
+
+  heatmapLayerStats = {};
+  if (typeof Diagnostics !== 'undefined') {
+    Diagnostics.scanDeep();
+    if (typeof updateDiagnosticBadge !== 'undefined') updateDiagnosticBadge();
+  }
+  if (typeof Insights !== 'undefined') {
+    Insights.generate(parser, Diagnostics);
+    if (typeof renderInsightsPanel !== 'undefined') renderInsightsPanel();
+  }
+  if (typeof renderAnalysisPanel === 'function') renderAnalysisPanel();
+  if (currentView === 'visual' || currentView === 'warp') {
+    viewer.clearBuffers();
+    viewer.render(viewer.currentLayer);
+  }
+}
+
+// Initialize firmware UI
+onFirmwareChange('u1');
+
+// ===== FILE HANDLING =====
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+// ===== ONBOARDING HINTS =====
+const onboardState = JSON.parse(localStorage.getItem('gcode_onboard') || '{}');
+
+if (!onboardState.dropzone) {
+  setTimeout(() => showOnboardHint('dropzone', 'dropZone', 'Drop a .gcode or .bgcode file here to get started'), 500);
+}
+
+let dragModId = null;
+
+let currentView = 'code';
+
+const viewer = new GcodeViewer3D('viewerCanvas');
+
+// Update computed info when insert height changes
+document.addEventListener('DOMContentLoaded', () => {
+  const heightInput = document.getElementById('insertHeight');
+  const unitSelect = document.getElementById('insertHeightUnit');
+  if (heightInput) heightInput.addEventListener('input', updateComputedPauseInfo);
+  if (unitSelect) unitSelect.addEventListener('change', updateComputedPauseInfo);
+  initDecodeTooltip();
+  if (typeof StatsOverlay !== 'undefined') StatsOverlay.init();
+  if (typeof initCompareControls === 'function') initCompareControls();
+  if (typeof Tooltips !== 'undefined') Tooltips.init();
+  if (typeof ContextMenu !== 'undefined') ContextMenu.init();
+
+  // Register command palette commands
+  if (typeof CommandPalette !== 'undefined') {
+    CommandPalette.register([
+      // Navigation
+      { id: 'goto-layer', label: 'Go to layer...', category: 'Navigation', action: () => {
+        const num = prompt('Go to layer number:');
+        if (num != null && !isNaN(num)) selectLayer(parseInt(num));
+      }},
+      { id: 'goto-line', label: 'Go to line...', category: 'Navigation', action: () => {
+        const num = prompt('Go to line number:');
+        if (num != null && !isNaN(num)) goToLine(parseInt(num) - 1);
+      }},
+
+      // View
+      { id: 'toggle-view', label: 'Toggle Code/Visual view', category: 'View', shortcut: 'Space', action: () => setView(currentView === 'code' ? 'visual' : 'code') },
+      { id: 'code-view', label: 'Switch to code view', category: 'View', action: () => setView('code') },
+      { id: 'visual-view', label: 'Switch to visual view', category: 'View', action: () => setView('visual') },
+      { id: 'warp-view', label: 'Show warp view', category: 'View', shortcut: 'W', action: () => setView('warp') },
+      { id: 'fit-bounds', label: 'Fit camera to model', category: 'View', shortcut: 'F', action: () => { if (viewer) viewer.fitBounds(); }},
+
+      // Tools
+      { id: 'measure', label: 'Toggle measurement mode', category: 'Tools', shortcut: 'M', action: () => { if (typeof toggleMeasureMode !== 'undefined') toggleMeasureMode(); }},
+      { id: 'compare', label: 'Toggle layer comparison', category: 'Tools', shortcut: 'C', action: () => { if (typeof toggleCompareMode !== 'undefined') toggleCompareMode(); }},
+      { id: 'arrows', label: 'Toggle flow direction arrows', category: 'Tools', shortcut: 'D', action: () => { if (typeof toggleFlowArrows !== 'undefined') toggleFlowArrows(); }},
+      { id: 'cross-section', label: 'Toggle cross-section', category: 'Tools', shortcut: 'X', action: () => { if (typeof toggleCrossSection !== 'undefined') toggleCrossSection(); }},
+      { id: 'simulation', label: 'Play/pause simulation', category: 'Tools', shortcut: 'P', action: () => { if (typeof toggleSimulation !== 'undefined') toggleSimulation(); }},
+
+      // Modifications
+      { id: 'add-pause', label: 'Add pause at current layer', category: 'Modify', action: () => switchTab('pause') },
+      { id: 'add-filament', label: 'Add filament change', category: 'Modify', action: () => switchTab('filament') },
+      { id: 'add-custom', label: 'Insert custom G-code', category: 'Modify', action: () => switchTab('custom') },
+      { id: 'add-zoffset', label: 'Apply Z-offset', category: 'Modify', action: () => switchTab('zoffset') },
+
+      // Analysis
+      { id: 'run-analysis', label: 'Run all analyses', category: 'Analysis', action: () => { if (typeof runAnalysis !== 'undefined') runAnalysis(); }},
+      { id: 'heatmap-speed', label: 'Heatmap: Speed', category: 'Analysis', action: () => setColorMode('speed') },
+      { id: 'heatmap-accel', label: 'Heatmap: Acceleration', category: 'Analysis', action: () => setColorMode('acceleration') },
+      { id: 'heatmap-motion', label: 'Motion type colors', category: 'Analysis', action: () => setColorMode('motion-type') },
+
+      // Export/File
+      { id: 'export', label: 'Export G-code', category: 'File', shortcut: 'Ctrl+E', action: () => { if (typeof exportGcode !== 'undefined') exportGcode(); }},
+      { id: 'open-file', label: 'Open file', category: 'File', shortcut: 'Ctrl+O', action: () => document.getElementById('fileInput')?.click() },
+      { id: 'shortcuts', label: 'Show keyboard shortcuts', category: 'Help', shortcut: '?', action: () => { if (typeof toggleShortcutsOverlay !== 'undefined') toggleShortcutsOverlay(); }},
+
+      // Insights & Help
+      { id: 'insights', label: 'Show insights panel', category: 'View', action: () => toggleInsightsPanel() },
+      { id: 'guided-tour', label: 'Start guided tour', category: 'Help', action: () => Onboarding.start() },
+      { id: 'range-stats', label: 'Show range stats', category: 'Navigation', action: () => showRangeStats(), condition: () => layerRangeStart !== null },
+    ]);
+  }
+});
+
+window.addEventListener('keydown', e => {
+  const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT';
+
+  // Undo/redo (works even in inputs)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); performUndo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); performRedo(); return; }
+
+  // Ctrl shortcuts (work everywhere)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); exportGcode(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); document.getElementById('fileInput').click(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); if (currentView === 'code') showSearchBar(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); if (typeof CommandPalette !== 'undefined') CommandPalette.toggle(); return; }
+
+  if (isInput) return;
+
+  // Measure mode Esc
+  if (measureMode && e.key === 'Escape') {
+    measureMode = false;
+    MeasureTool.reset();
+    document.getElementById('measureToggle').classList.remove('active');
+    document.getElementById('viewerCanvas').style.cursor = '';
+    showToast('Measurement mode OFF');
+    if (currentView === 'visual') viewer.render(viewer.currentLayer);
+    return;
+  }
+
+  // Edit mode shortcuts
+  if (editMode) {
+    if (e.key === 'Escape') {
+      if (editSelectedMoves.length > 0) {
+        clearMultiSelection();
+      } else {
+        cancelEditSelection();
+      }
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && editSelectedMove) {
+      e.preventDefault();
+      deleteSelectedMove();
+      return;
+    }
+    if (e.key === 'Enter' && editSelectedMoves.length >= 2) {
+      e.preventDefault();
+      applyTransform();
+      return;
+    }
+  }
+
+  // Tab switching: 1-8
+  const tabKeys = { '1': 'pause', '2': 'filament', '3': 'eject', '4': 'zoffset', '5': 'custom', '6': 'inserts', '7': 'recovery', '8': 'cooling', '9': 'pa-tuner', '0': 'analysis' };
+  if (tabKeys[e.key]) { switchTab(tabKeys[e.key]); return; }
+
+  // Layer navigation
+  if (e.key === '[' || e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const slider = document.getElementById('layerSlider');
+    slider.value = Math.max(0, +slider.value - 1);
+    onSliderChange(+slider.value);
+    return;
+  }
+  if (e.key === ']' || e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const slider = document.getElementById('layerSlider');
+    slider.value = Math.min(+slider.max, +slider.value + 1);
+    onSliderChange(+slider.value);
+    return;
+  }
+
+  // View toggle
+  if (e.key === ' ') { e.preventDefault(); setView(currentView === 'code' ? 'visual' : 'code'); return; }
+
+  // Warp view
+  if (e.key === 'w') { setView(currentView === 'warp' ? 'visual' : 'warp'); return; }
+  if (e.key === 'r') { setView(currentView === 'reference' ? 'code' : 'reference'); return; }
+
+  // Reset camera
+  const isViewerView = currentView === 'visual' || currentView === 'warp';
+  if (e.key === 'f' && isViewerView) { viewer.fitBounds(); viewer.render(viewer.currentLayer); return; }
+
+  // Simulation play/pause
+  if (e.key === 'p' && currentView === 'visual') { toggleSimulation(); return; }
+
+  // Cross-section toggle
+  if (e.key === 'x' && currentView === 'visual') { toggleCrossSection(); return; }
+
+  // Measurement mode toggle
+  if ((e.key === 'm' || e.key === 'M') && currentView === 'visual') {
+    measureMode = !measureMode;
+    if (!measureMode) MeasureTool.reset();
+    document.getElementById('measureToggle').classList.toggle('active', measureMode);
+    document.getElementById('viewerCanvas').style.cursor = measureMode ? 'crosshair' : '';
+    showToast(measureMode ? 'Measurement mode ON — click to place points' : 'Measurement mode OFF');
+    viewer.render(selectedLayer);
+    return;
+  }
+
+  // Flow direction arrows toggle
+  if ((e.key === 'd' || e.key === 'D') && currentView === 'visual') {
+    if (typeof FlowArrows !== 'undefined') {
+      FlowArrows.enabled = !FlowArrows.enabled;
+      const btn = document.getElementById('flowArrowsToggle');
+      if (btn) btn.classList.toggle('active', FlowArrows.enabled);
+      showToast(FlowArrows.enabled ? 'Flow arrows ON' : 'Flow arrows OFF');
+      viewer.render(selectedLayer);
+    }
+    return;
+  }
+
+  // Comparison mode toggle
+  if ((e.key === 'c' || e.key === 'C') && currentView === 'visual') {
+    toggleCompareMode();
+    return;
+  }
+
+  // Help overlay
+  if (e.key === '?') { toggleShortcutsOverlay(); return; }
+});
+
+applyTheme(getPreferredTheme());
+initWarpControls();

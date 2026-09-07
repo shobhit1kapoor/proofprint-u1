@@ -1,0 +1,15 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node serve.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
+  }
+}
