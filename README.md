@@ -6,6 +6,10 @@ ProofPrint U1 gives makers a clear answer to the question that matters just befo
 
 It reads the sliced G-code itself—not merely the model—and turns it into an interactive 3D inspection, a set of explainable risk findings, and a concise **U1 Print Passport**. The result is a practical review layer between slicing and printing: local by default, transparent about its assumptions, and deliberately controlled by the maker.
 
+![Toolpath analysis workspace](screenshots/22-analysis-overlay.png)
+
+*Toolpath analysis workspace: 3D layer context, heatmap overlay, finding list, and a reviewable pause are shown together.*
+
 ## The problem
 
 Complex U1 jobs compress many decisions into one file: material behavior, cooling, flow, geometry, retraction, motion, and points where a maker may need to intervene. A slicer preview can show where the tool will travel, but it does not always make the *consequences* of that travel easy to inspect.
