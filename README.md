@@ -1,75 +1,93 @@
 # ProofPrint U1
 
-> **Local, explainable G-code preflight for Snapmaker U1.**
+> **A local, explainable preflight workbench for Snapmaker U1 G-code.**
 
-ProofPrint U1 is the evidence layer between slicing and printing. It turns the G-code that will actually drive a U1 into a visual, explainable readiness review before a maker commits material, time, and machine availability.
+ProofPrint U1 gives makers a clear answer to the question that matters just before a long print: *what in this file deserves attention before material and machine time are committed?*
 
-It is not a slicer replacement, printer firmware, cloud service, or autonomous print controller. It is a local planning and review workbench.
+It reads the sliced G-code itself—not merely the model—and turns it into an interactive 3D inspection, a set of explainable risk findings, and a concise **U1 Print Passport**. The result is a practical review layer between slicing and printing: local by default, transparent about its assumptions, and deliberately controlled by the maker.
 
-## Why it exists
+## The problem
 
-The U1 makes ambitious multi-material work practical, but a late-discovered thermal hotspot, high-flow segment, repeated retraction, weak feature, insufficient cooling time, or poorly timed intervention can make a print expensive to recover. Slicer previews show a path. ProofPrint U1 helps makers identify the parts of that path that deserve attention before pressing print.
+Complex U1 jobs compress many decisions into one file: material behavior, cooling, flow, geometry, retraction, motion, and points where a maker may need to intervene. A slicer preview can show where the tool will travel, but it does not always make the *consequences* of that travel easy to inspect.
 
-## Highlights
+ProofPrint U1 approaches that gap from the G-code outward. It makes the path, the layer context, and the relevant risk visible before a file reaches the printer. It is not another slicer, firmware replacement, cloud service, or autonomous print controller. It is a local planning and review workbench.
 
-- Loads G-code and BGCode locally in the browser; the application does not upload loaded files.
-- Renders toolpaths in 3D with layer playback, cross-sections, measurements, comparison tools, and heatmaps.
-- Surfaces explainable motion, structural, thermal, retraction, cooling, and volumetric-flow findings.
-- Produces a **U1 Print Passport** with advisory readiness score and explicit critical, warning, and informational counts.
-- Provides reviewable changes including pauses, Z offsets, fan profiles, recovery helpers, custom G-code, and pressure-advance support.
-- Uses a conservative U1/Klipper-safe `PAUSE` boundary rather than guessing proprietary U1 commands.
-- Includes optional **U1 Link** for local, read-only Moonraker status and toolhead inspection.
-- Ships as a portable single-file build with automated test coverage.
+## What makers can do
 
-## Print-review flow
+| Capability | What it enables |
+| --- | --- |
+| G-code and BGCode import | Inspect the actual machine instructions locally in the browser. |
+| 3D toolpath workspace | Navigate layers, play back moves, inspect cross-sections, measure features, compare revisions, and read heatmaps. |
+| Risk analysis | Surface motion, structural, thermal, retraction, cooling, and volumetric-flow findings with context. |
+| U1 Print Passport | See an advisory readiness score with explicit critical, warning, and informational counts. |
+| Reviewable modifications | Add pauses, Z offsets, fan profiles, recovery helpers, custom G-code, and pressure-advance output with previewable changes. |
+| U1 Link | Check local U1/Moonraker state and available toolheads without gaining printer-control capability. |
+
+## From file to decision
 
 ```mermaid
 flowchart LR
-  A[Sliced G-code / BGCode] --> B[Local parse]
-  B --> C[3D toolpath inspection]
-  B --> D[Risk analyzers]
+  A[Sliced G-code or BGCode] --> B[Local parser]
+  B --> C[3D toolpath and layer inspection]
+  B --> D[Independent risk analyzers]
   D --> E[U1 Print Passport]
   C --> F[Maker review]
   E --> F
-  F --> G{Change needed?}
-  G -->|Yes| H[Reviewable G-code modification]
-  G -->|No| I[Export unchanged file]
-  H --> J[Review exported preview]
+  F --> G{A change is useful?}
+  G -->|Yes| H[Create a reviewable modification]
+  G -->|No| I[Keep the original file]
+  H --> J[Inspect generated G-code]
   J --> K[Maker-approved print workflow]
   I --> K
   L[Optional U1 Link] -. read-only status .-> F
 ```
 
-The application deliberately stops before printer control. The maker retains the final decision over every export and print.
+The system intentionally ends at informed review. It does not send print commands, move hardware, set temperatures, upload files, or bypass a printer safety mechanism.
 
-## U1 Link: awareness without control
+## Explainable by design
 
-U1 Link defaults to `http://U1.local:7125` and uses the U1’s Moonraker-compatible local service. It makes only the following read-only requests:
+The U1 Print Passport is not a verdict about whether a print will succeed. It is an advisory summary of the findings produced from the loaded file. Each severity count is visible, and the surrounding tools let a maker inspect the relevant layer and toolpath before taking action.
 
-| Request | Purpose |
+That distinction matters. Material, nozzle, firmware configuration, enclosure conditions, and slicer settings are real-world variables. ProofPrint U1 makes its analysis useful without presenting a heuristic as certainty.
+
+## A conservative U1 workflow
+
+The included U1 profile is tailored to the U1’s Klipper-based environment. When a human intervention is appropriate, ProofPrint U1 inserts a visible standard `PAUSE` for the operator to review. It does not invent proprietary material-change, camera, or motion commands.
+
+Pressure-advance output uses Klipper syntax. Any generated command remains visible in the G-code preview before export, preserving a clear chain of responsibility from suggestion to operator approval.
+
+## U1 Link: local awareness without printer control
+
+U1 Link provides optional local status inspection through the U1’s Moonraker-compatible service. It defaults to `http://U1.local:7125` and makes only these requests:
+
+| Read-only request | Purpose |
 | --- | --- |
 | `GET /server/info` | Identify the local Moonraker service. |
-| `GET /printer/info` | Read printer state. |
+| `GET /printer/info` | Read the current printer state. |
 | `GET /printer/objects/query?print_stats&toolhead&extruder&extruder1&extruder2&extruder3` | Read print, homing, and available extruder-object state. |
 
-It has no upload, G-code execution, movement, heating, print-control, configuration, or tool-change endpoint. Run through `npm start` when using U1 Link, so the app is served from `localhost`.
+There is no upload, G-code execution, movement, heating, print-control, configuration, or tool-change endpoint in U1 Link. Run the application through `npm start` to use this feature from `localhost`.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  UI[src/index.html + ui.js] --> APP[app.js: orchestration]
+  UI[src/index.html + ui.js] --> APP[app.js: state and orchestration]
   APP --> PARSER[parser.js / bgcode.js]
   APP --> VIEWER[viewer3d.js]
   APP --> ANALYSIS[analysis-manager.js]
-  ANALYSIS --> RISK[Motion · Structural · Thermal · Retraction · Flow]
+  ANALYSIS --> MOTION[Motion]
+  ANALYSIS --> STRUCTURE[Structural]
+  ANALYSIS --> THERMAL[Thermal]
+  ANALYSIS --> RETRACTION[Retraction]
+  ANALYSIS --> FLOW[Flow]
   APP --> MODIFY[modifier.js + insert manager]
   APP --> U1[u1-moonraker.js: read-only client]
   PROFILE[firmware.js: U1 profile] --> APP
   BUILD[build.js] --> PORTABLE[gcode-modifier.html]
 ```
 
-Source is modular for testing and extension, then bundled into one portable HTML artifact. Read [the architecture notes](docs/ARCHITECTURE.md) for component responsibilities and safety boundaries.
+The source remains modular for testing and extension; `build.js` packages it into a single portable HTML artifact. See [Architecture](docs/ARCHITECTURE.md) for component responsibilities, data flow, and implementation boundaries.
 
 ## Quick start
 
@@ -84,27 +102,30 @@ npm run build
 npm start
 ```
 
-Open [http://localhost:4173](http://localhost:4173). For offline-only analysis, open `gcode-modifier.html` directly after building.
+Open [http://localhost:4173](http://localhost:4173). For offline-only analysis, build first and then open `gcode-modifier.html` directly.
 
-## Commands
+## Development commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm test` | Run parser, modification, visual-operation, analysis, U1-profile, and read-only client tests. |
+| `npm test` | Run the parser, modification, visual-operation, analysis, U1-profile, and Moonraker-client tests. |
 | `npm run build` | Bundle `src/` into `gcode-modifier.html`. |
-| `npm start` | Serve the build at `http://localhost:4173`. |
+| `npm start` | Serve the portable build at `http://localhost:4173`. |
 
-## Responsible use
+## Repository guide
 
-ProofPrint U1 is a planning and review tool. Findings are heuristic, and generated G-code must be reviewed against the active U1 firmware, machine configuration, material, nozzle, and slicer profile. It neither bypasses safety interlocks nor guarantees a print outcome.
+| Resource | Purpose |
+| --- | --- |
+| [Project overview](HACKATHON_SUBMISSION.md) | The complete product narrative and scope. |
+| [Architecture](docs/ARCHITECTURE.md) | Components, data flow, testing strategy, and safety boundary. |
+| [U1 local integration](docs/u1-local-integration.md) | Local Moonraker contract and acceptance protocol. |
+| [User guide](wiki/User-Guide.md) | Detailed application workflow. |
+| [Analysis theory](wiki/Analysis-Theory.md) | Risk-model concepts and assumptions. |
+| [Contributing](CONTRIBUTING.md) | Extension and code-quality guidelines. |
 
-## Project material
+## Safety and responsible use
 
-- [Final project write-up](HACKATHON_SUBMISSION.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [U1 local integration and acceptance protocol](docs/u1-local-integration.md)
-- [Live-validation evidence record](EVIDENCE_DRAFT.md)
-- [Contributing](CONTRIBUTING.md)
+ProofPrint U1 is a planning and review tool. Findings are heuristic and generated G-code must be reviewed against the active U1 firmware, machine configuration, material, nozzle, and slicer profile. It does not guarantee a print outcome or bypass safety interlocks. Review [DISCLAIMER.md](DISCLAIMER.md) before using modified G-code.
 
 ## License
 
